@@ -1,0 +1,16 @@
+name: isumap
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - matplotlib
+  - numba
+  - numpy
+  - pandas
+  - pytorch
+  - scikit-learn
+  - scipy
+  - tqdm
+  - pip:
+    - pylanczos
