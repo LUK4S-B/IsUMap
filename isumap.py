@@ -5,7 +5,7 @@ from sklearn.neighbors import NearestNeighbors
 from time import time
 import pickle
 from numba import njit, prange
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from functools import partial
 from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
@@ -14,6 +14,8 @@ def dijkstra_wrapper(graph, i):
     return dijkstra(csgraph=graph, indices=i)
 
 def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, dataIsDistMatrix=False, dataIsGeodesicDistMatrix = False, saveDistMatrix = False, labels=None, initialization="cMDS", metricMDS=True, sgd_n_epochs = 1000, sgd_lr=1e-2, sgd_batch_size = None,sgd_max_epochs_no_improvement = 100, sgd_loss = 'MSE', sgd_saveplots_of_initializations=True, sgd_saveloss=False):
+    if verbose:
+        print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
     
     @njit(parallel=True)
@@ -169,8 +171,8 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
         t1 = time()
         if verbose:
             printtime("Neighbourhoods merged in",t1-t0)
-
-        print("Running Dijkstra...")
+        
+        print("\nRunning Dijkstra...")
         t0 = time()
         graph = csr_matrix(data_D)
         partial_func = partial(dijkstra_wrapper, graph)
@@ -200,7 +202,8 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
         printtime("Extracted connected components in",t1-t0)
     
     nc = len(SM)
-    print("Number of clusters = "+str(nc))
+    if verbose:
+        print("Number of clusters = "+str(nc))
 
     t0 = time()
     meanPointsOfClusters, clusterLabels = compute_mean_points_and_labels(nc, data, SM)
@@ -223,7 +226,7 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
         if verbose:
             printtime("Embedded the cluster mean points in",t1-t0)
     
-    print("Reducing dimension...")
+    print("\nReducing dimension...")
     t0 = time()
     subMatrixEmbeddings = subMatrixEmbeddings(nc, SM, meanPointEmbeddings)
     t1 = time()
