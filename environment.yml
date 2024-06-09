@@ -12,5 +12,6 @@ dependencies:
   - scikit-learn
   - scipy
   - tqdm
+  - pip
   - pip:
     - pylanczos

@@ -11,7 +11,7 @@ from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
 
 def dijkstra_wrapper(graph, i):
-    return dijkstra(csgraph=graph, ithendices=i)
+    return dijkstra(csgraph=graph, indices=i)
 
 def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, dataIsDistMatrix=False, dataIsGeodesicDistMatrix = False, saveDistMatrix = False, labels=None, initialization="cMDS", metricMDS=True, sgd_n_epochs = 1000, sgd_lr=1e-2, sgd_batch_size = None,sgd_max_epochs_no_improvement = 100, sgd_loss = 'MSE', sgd_saveplots_of_initializations=True, sgd_saveloss=False):
     N = data.shape[0]
@@ -155,25 +155,20 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
             knn_inds, knn_distances = find_nn(data,k)
         t1 = time()
         if verbose:
-            printtime("knn",t1-t0)
+            printtime("Nearest neighbours computed in",t1-t0)
 
         t0 = time()
         distance = normalization(knn_distances,normalize,distBeyondNN)
         t1 = time()
         if verbose:
-            printtime("normalization",t1-t0)
+            printtime("Normalization computed in",t1-t0)
 
         t0=time()
         R = compR(knn_inds,distance,N)
-        t1 = time()
-        if verbose:
-            printtime("R",t1-t0)
-
-        t0=time()
         data_D = compDataD(knn_inds, R, N)
         t1 = time()
         if verbose:
-            printtime("dataD",t1-t0)
+            printtime("Neighbourhoods merged in",t1-t0)
 
         print("Running Dijkstra...")
         t0 = time()

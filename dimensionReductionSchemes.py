@@ -61,7 +61,7 @@ def reduce_dim(D, d=2, n_epochs = 1000, lr=1e-2, batch_size = None,max_epochs_no
             print("Finished random initialization.")
 
     if saveplots_of_initializations:
-        saveplot(init,labels,title="Initialization N = " + str(D.shape[0]))
+        saveplot(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
         print("Result of the initialization was stored in a file.\n")
 
     if metricMDS:

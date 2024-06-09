@@ -35,5 +35,5 @@ title = "Non-uniform Hemisphere N_" + str(N) + " k_" + str(k) + " beyondNN_" + s
 saveplot(finalEmbedding,labels,title=title)
 print("\nResult saved in './Results/" + title + ".png'")
 
-printtime("Isumap",t1-t0)
+printtime("Isumap total time",t1-t0)
 
