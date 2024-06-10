@@ -10,6 +10,7 @@ N = 3000
 normalize = True
 metricMDS = True
 distBeyondNN = True
+tconorm = "canonical"
 
 
 if __name__ == '__main__':
@@ -36,4 +37,3 @@ if __name__ == '__main__':
     print("\nResult saved in './Results/" + title + ".png'")
 
     printtime("Isumap total time",t1-t0)
-

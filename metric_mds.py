@@ -78,6 +78,12 @@ def sgd_mds(D,initialData,
     N = D.shape[0]
     if batch_size == None:
         batch_size = round(N/10)
+        if batch_size == 0:
+            if N>1:
+                print("Directly returning initial embedding because there are only " + str(N) + " points in the cluster")
+            else:
+                print("Directly returning initial embedding because there is only " + str(N) + " point in the cluster")
+            return initialData
     
     dataDtype = initialData.dtype
     init = convert_to_torch_float32(initialData)

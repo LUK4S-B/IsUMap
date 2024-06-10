@@ -9,6 +9,7 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
+import torch
 
 def dijkstra_wrapper(graph, i):
     return dijkstra(csgraph=graph, indices=i)
@@ -115,34 +116,66 @@ def compR(knn_inds, distance):
         R[i, knn_inds[i]] = distance[i]
     return R
 
-@njit(parallel=True)
-def compDataD(knn_inds, R):
+def compDataD(knn_inds,R,N,tconorm="canonical"):
     r'''
     Symmetrizes a $(n,n)$ (sparse) matrix of nearest neighbor distances. The input matrix $R$ is assumed to contain
-    non-zero entries only at nearest neighbor positions. We symmetrize by taking
-    the minimum whenever that is valid (if one of the distances is zero and does not correspond to a nearest neighbor, it is ignored)
+    non-zero entries only at nearest neighbor positions. We symmetrize by taking 
+    a t-conorm T(a,b), where a is an element of R and b is an element or R.transpose()
+    
+    For the canonical t-conorm, this simplifies to the minimum whenever that is valid (if one of the distances is zero and does not correspond to a nearest neighbor, it is ignored)
 
     :param knn_inds: np.ndarray (n,k) - indices of nearest neighbors
     :param R: np.ndarray (n,n) - matrix with nearest neighbor distances filled by zeros elswhere
+    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
     :return data_D: np.ndarray (n,n) - distance matrix
     '''
-    N = knn_inds.shape[0]
+    if tconorm != "canonical":
+        R = torch.from_numpy(R)
+        R[R != 0] = torch.exp(-R[R != 0])
+        RT = R.t()
 
-    #RT = R.transpose()
-    data_D = np.zeros((N, N))
-    for i in prange(N):
-        for j in knn_inds[i]:
-            Rij = R[i, j]
-            RTij = R[j,i] #RT[i, j]
+        if tconorm == "probabilistic sum":
+            data_D = R + RT - R * RT
+        elif tconorm == "bounded sum":
+            data_D = torch.minimum(R+RT,torch.ones_like(R))
+        elif tconorm == "drastic sum":
+            data_D = torch.zeros_like(R)
+            data_D[(R != 0) & (RT == 0)] = R[(R != 0) & (RT == 0)]
+            data_D[(R == 0) & (RT != 0)] = RT[(R == 0) & (RT != 0)]
+            data_D[(R != 0) & (RT != 0)] = 1
+        elif tconorm == "Einstein sum":
+            data_D = (R+RT)/(1+R*RT)
+        elif tconorm == "nilpotent maximum":
+            data_D = torch.zeros_like(R)
+            whereSumLowerOne = (R+RT<1)
+            data_D[whereSumLowerOne] = torch.maximum(R[whereSumLowerOne],RT[whereSumLowerOne])
+            data_D[~whereSumLowerOne] = torch.ones_like(R)[~whereSumLowerOne]
+        else: # alternative implementation of canonical max-t-conorm
+            data_D = torch.maximum(R,RT)
+        # feel free to add your favourite t-conorm here
 
-            # we know that j is in the k-nns, so we check only if RTij is nonzero - if Rij is zero this means it is the nearest neighbor due to the normalization
-            if RTij != 0:
-                r = np.minimum(Rij, RTij)
-            else:
-                r = Rij
-            data_D[i, j] = r
-            data_D[j, i] = r
-    return data_D
+        data_D[data_D!=0] = -torch.log(data_D[data_D!=0])
+        data_D = data_D.numpy()
+        return data_D
+    else: # the canonical (max) - t-conorm can be handled in a way that ensures that we spend at most Nxk operations:
+        @njit(parallel=True) # use numba for parallelization
+        def maxDataD(knn_inds,R,N):
+          N = knn_inds.shape[0]
+          data_D = np.zeros((N, N))
+
+          for i in prange(N):
+              for j in knn_inds[i]:
+                  Rij = R[i, j]
+                  RTij = R[j, i]
+
+                  # we know that j is in the k-nns, so we check only if RTij is nonzero - if Rij is zero this means it is the nearest neighbor due to the normalization
+                  if RTij != 0:
+                      r = np.minimum(Rij, RTij)
+                  else:
+                      r = Rij
+                  data_D[i, j] = r
+                  data_D[j, i] = r
+        return maxDataD(knn_inds,R,N)
 
 @njit
 def extractSubmatrices(D):
@@ -233,27 +266,28 @@ def subMatrixEmbeddings(nc, SM, meanPointEmbeddings,**reduce_dim_kwargs):
 def isumap(data,
            k: int,
            d: int,
-           normalize:bool = True,
-           distBeyondNN:bool = True,
-           verbose: bool=True,
-           dataIsDistMatrix: bool=False,
+           normalize: bool = True,
+           distBeyondNN: bool = True,
+           verbose: bool = True,
+           dataIsDistMatrix: bool = False,
            dataIsGeodesicDistMatrix: bool = False,
            saveDistMatrix: bool = False,
-           labels : bool=None,
-           initialization="cMDS",
-           metricMDS : bool =True,
-           sgd_n_epochs:int= 1000,
-           sgd_lr: float=1e-2,
+           labels : bool = None,
+           initialization = "cMDS",
+           metricMDS : bool = True,
+           sgd_n_epochs: int = 1000,
+           sgd_lr: float = 1e-2,
            sgd_batch_size = None,
            sgd_max_epochs_no_improvement: int = 100,
            sgd_loss = 'MSE',
-           sgd_saveplots_of_initializations:bool=True,
-           sgd_saveloss: bool=False):
+           sgd_saveplots_of_initializations:bool = True,
+           sgd_saveloss: bool = False,
+           tconorm = "canonical"):
 
     '''
 
     IsUMap embeds data into a d-dimensional space, using the colimit in the category of uber-metric spaces, by means
-    of dijkstras algorithm after a merging of local metric spaces via the minimum.
+    of Dijkstra's algorithm after a merging of local metric spaces via the minimum.
     The low-dimensional points are then obtained via multidimensional scaling.
 
 
@@ -282,6 +316,7 @@ def isumap(data,
     :param sgd_loss: loss for SGD (one of ['MSE','Sammon'] or custom loss)
     :param sgd_saveplots_of_initializations: bool - whether to save plots of SGD initialization
     :param sgd_saveloss:  bool - whether to save plots of SGD loss
+    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
     :return finalEmbedding: np.ndarray (n,d) - points in low dimension
     :return clusterLabels: labels of connected components
 
@@ -298,6 +333,7 @@ def isumap(data,
     if verbose:
         print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
+
 
     if dataIsGeodesicDistMatrix == False:
         t0 = time()
@@ -317,11 +353,11 @@ def isumap(data,
             printtime("Normalization computed in",t1-t0)
 
         t0=time()
-        R = compR(knn_inds,distance)
-        data_D = compDataD(knn_inds, R)
+        R = compR(knn_inds,distance,N)
+        data_D = compDataD(knn_inds, R, N, tconorm=tconorm)
         t1 = time()
         if verbose:
-            printtime("Neighbourhoods merged in",t1-t0)
+            printtime("Merged neighbourhoods with tconorm",t1-t0)
         
         print("\nRunning Dijkstra...")
         t0 = time()
@@ -372,7 +408,7 @@ def isumap(data,
             printtime("Euclidean distances",t1-t0)
         
         t0 = time()
-        meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", labels=labels, saveplots_of_initializations=False, metricMDS=False, saveloss=False, verbose=verbose)
+        meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", labels=labels, saveplots_of_initializations=False, metricMDS=False, saveloss=False, verbose=verbose, tconorm=tconorm)
         t1 = time()
         if verbose:
             printtime("Embedded the cluster mean points in",t1-t0)
