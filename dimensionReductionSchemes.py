@@ -52,7 +52,7 @@ def classical_multidimensional_scaling(M,d,verbose):
         printtime("classical MDS",t1-t0)
     return cMDS
 
-def reduce_dim(D, d=2, n_epochs = 1000, lr=1e-2, batch_size = None,max_epochs_no_improvement = 100, loss = 'MSE', initialization="cMDS", labels=None, saveplots_of_initializations=True, metricMDS=True, saveloss=False, verbose=True):
+def reduce_dim(D, d=2, n_epochs = 1000, lr=1e-2, batch_size = None,max_epochs_no_improvement = 100, loss = 'MSE', initialization="cMDS", labels=None, saveplots_of_initializations=True, metricMDS=True, saveloss=False, verbose=True, tconorm="canonical", clusternumber=0):
     if initialization=="cMDS":
         init = classical_multidimensional_scaling(D,d,verbose)
     elif initialization=="spectral":
@@ -63,7 +63,7 @@ def reduce_dim(D, d=2, n_epochs = 1000, lr=1e-2, batch_size = None,max_epochs_no
             print("Finished random initialization.")
 
     if saveplots_of_initializations:
-        plot_data(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
+        plot_data(init,labels,title = initialization + " initialization with N_" + str(D.shape[0]) + " tconorm_" + tconorm + " clusternum_" + str(clusternumber))
         print("Result of the initialization was stored in a file.\n")
 
     if metricMDS:
