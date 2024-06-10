@@ -141,6 +141,10 @@ def load_MNIST(N):
 def load_FashionMNIST(N):
     return load_and_store_data_file(N,'fashion-mnist')
 
+
+
+### Plotting data
+
 def plot_MNIST_samples(images, labels, num_samples=10):
     num_rows = num_samples // 8 + (num_samples % 8 > 0)  # Calculate the number of rows
     plt.figure(figsize=(12, 12))
@@ -156,19 +160,28 @@ def plot_MNIST_samples(images, labels, num_samples=10):
     plt.tight_layout()  # Adjust the padding between and around the subplots
     plt.show()
 
-## Plotting data
-
-def saveplot(data,labels,title='Data'):
+def plot_data(data,labels,title='Data',save=True,display=False):
     if data.shape[0]==labels.shape[0]:
-        plt.figure(figsize=(12, 12))
-        plt.title("")
-        plt.scatter(data[:,0],data[:,1],s=3,c=labels, cmap="jet")
-        # plt.colorbar()
-        plt.gca().set_aspect('equal', adjustable='datalim')
-        plt.axis('off')
-        # Create the output directory if it doesn't exist
-        os.makedirs('Results', exist_ok=True)
-        plt.savefig('./Results/'+title+'.png')
+        fig = plt.figure(figsize=(12, 12))
+        plt.title(title)
+        dim = data.shape[1]
+        if dim==2:
+            plt.scatter(data[:,0],data[:,1],s=3,c=labels, cmap="jet")
+            # plt.colorbar()
+            plt.gca().set_aspect('equal', adjustable='datalim')
+            plt.axis('off')
+        elif dim==3:
+            ax = fig.add_subplot(111, projection="3d")
+            ax.scatter(data[:,0],data[:,1],data[:,2],s=3,c=labels, cmap="jet")
+            ax.view_init(20, -20)
+        else:
+            raise("Invalid dimension for plot")
+        if save:
+            # Create the output directory if it doesn't exist
+            os.makedirs('Results', exist_ok=True)
+            plt.savefig('./Results/'+title+'.png')
+        if display:
+            plt.show()
 
 def saveTotalLossPlots(total_losses,N):
     # Plot total loss
@@ -183,6 +196,10 @@ def saveTotalLossPlots(total_losses,N):
     os.makedirs('Results', exist_ok=True)
     os.makedirs('Results/Losses', exist_ok=True)
     plt.savefig('./Results/Losses/N_'+str(N)+'_total_loss.png')
+
+
+
+### other helper functions
 
 def printtime(name,delta_t):
     if delta_t > 120:

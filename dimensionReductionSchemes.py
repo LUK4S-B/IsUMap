@@ -3,14 +3,15 @@ from numba import njit
 import numpy as np
 from time import time
 from sklearn.decomposition import PCA
-from data_and_plots import saveplot, printtime
+from data_and_plots import plot_data, printtime
 from metric_mds import sgd_mds
 from scipy.sparse import coo_matrix
 import numpy as np
 from sklearn.manifold import SpectralEmbedding
 
 def spectral_embedding(M,d,verbose):
-    print("\nPerforming Spectral Embedding...")
+    if verbose:
+        print("\nPerforming Spectral Embedding...")
     t0=time()
     spec_emb = SpectralEmbedding(n_components=d).fit_transform(M)
     t1 = time()
@@ -19,7 +20,8 @@ def spectral_embedding(M,d,verbose):
     return spec_emb
 
 def classical_multidimensional_scaling(M,d,verbose): 
-    print("\nPerforming classical MDS...")
+    if verbose:
+        print("\nPerforming classical MDS...")
     t0=time()
     @njit(parallel=True)
     def squareNormalize(M):
@@ -61,12 +63,11 @@ def reduce_dim(D, d=2, n_epochs = 1000, lr=1e-2, batch_size = None,max_epochs_no
             print("Finished random initialization.")
 
     if saveplots_of_initializations:
-        saveplot(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
+        plot_data(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
         print("Result of the initialization was stored in a file.\n")
 
     if metricMDS:
-        if verbose:
-            print("\nPerforming metric MDS...")
+        print("\nPerforming metric MDS...")
         metric_mds_embedding = sgd_mds(D, init, n_epochs=n_epochs, lr=lr, batch_size=batch_size, max_epochs_no_improvement=max_epochs_no_improvement, loss=loss, saveloss=saveloss)
     else:
         metric_mds_embedding = init

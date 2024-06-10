@@ -11,7 +11,7 @@ Please cite them when using IsUMap.
 # Usage
 
 Right now, we do not yet provide IsUMap as a package. 
-But since it is rather lightweight, you can use it simply by cloning the repo, and installing the dependencies in `environment.yml`.
+But since it is rather lightweight (except, perhaps, for the pytorch dependency), you can use it simply by cloning the repo, and installing the dependencies in `environment.yml`.
 
 For example, assuming you want to install with `conda` to a new environment, you can run:
 ```
@@ -52,36 +52,91 @@ One can see that IsUMap excels for manifolds with lower dimension because it dis
 IsUMap takes the following input arguments and parameters with the following meaning:
 ```python
 finalEmbedding, clusterLabels = isumap(
-  data, # the dataset in form of an NxM numpy matrix
+  data, 
+  # the dataset in form of an NxM numpy matrix
 
-  k, # a positive integer that denotes the number of nearest neighbours of each datapoint (typically 5-50)
+  k,  
+  # a positive integer that denotes the number of
+  # nearest neighbours of each datapoint (typically 5-50)
 
-  d, # a positive integer that denotes the embedding dimension (typically 2 or 3)
+  d,  
+  # a positive integer that denotes the
+  # embedding dimension (typically 2 or 3)
 
-  labels=labels, # an NxL numpy matrix that denotes the labels, that serve as colors in the visualization plots
+  labels=labels,  
+  # an NxL numpy matrix that denotes the
+  # labels, that serve as colors 
+  # in the visualization plots
 
-  normalize = True, # whether the data distribution should be normalized
+  normalize = True, 
+  # whether the data distribution should be normalized
 
-  distBeyondNN = True, # whether the distance to the nearest neighbour should be subtracted (to counter-act the curse of dimensionality to some extent)
+  distBeyondNN = True,  
+  # whether the distance to the nearest neighbour
+  #  should be subtracted (to counter-act 
+  # the curse of dimensionality to some extent)
   
-  metricMDS = True, # whether metric multidimensional scaling (mMDS) should be performed via stochastic gradient descent or not
+  metricMDS = True, 
+  # whether metric multidimensional scaling (mMDS)
+  #  should be performed (via stochastic gradient descent)
 
-  initialization = "cMDS", # the default dimension reduction technique that initializes the stochastic gradient descent procedure of metric MDS. The default option is classical MDS "cMDS". Alternative choices are "spectral" and "random". If metricMDS = False, then the "initialization" is used as the final embedding.
+  initialization = "cMDS", 
+  # the default dimension reduction technique 
+  # that initializes the stochastic gradient descent
+  #  procedure of metric MDS. 
+  # The default option is classical MDS "cMDS". 
+  # Alternative choices are "spectral" and "random". 
+  # If metricMDS = False, then the "initialization" 
+  # is used as the final embedding.
 
-  verbose = True, # whether to output descriptions of what is being computed
+  verbose = True, 
+  # whether to output descriptions 
+  # of what is being computed
 
-  dataIsDistMatrix = False, # if this is set to True, then the 'data'-matrix is directly supposed to be in the format of an NxN symmetric distance matrix and local neighbourhoods and geodesic distances are then computed based on this matrix. Please only set this to True if your 'data' has the right format.
+  dataIsDistMatrix = False, 
+  # if this is set to True, then the 'data'-matrix 
+  # is directly supposed to be in the format of an
+  #  NxN symmetric distance matrix and local 
+  # neighbourhoods and geodesic distances are then
+  #  computed based on this matrix. Please only set 
+  # this to True if your 'data' has the right format.
 
-  dataIsGeodesicDistMatrix = False, # if this is set to True, then no geodesic distance matrix is computed from the data but the 'data'-matrix is directly used for dimension reduction. Please only set this to True if your 'data' has the right format, i.e. is an NxN symmetric distance matrix and you do not want to compute geodesic distances anymore.
+  dataIsGeodesicDistMatrix = False, 
+  # if this is set to True, then no geodesic distance
+  # matrix is computed from the data but the 
+  # 'data'-matrix is directly used for dimension 
+  # reduction. Please only set this to True if your
+  # 'data' has the right format, i.e. is an NxN 
+  # symmetric distance matrix and you do not want
+  # to compute geodesic distances anymore.
 
-  saveDistMatrix = False, # if this is set to True, then the geodesic distance matrix, that is computed with the Dijkstra algorithm before the dimension reduction, is stored. 
-  # Since the Dijkstra computation takes some time, this can be quite useful in combination with the 'dataIsGeodesicDistMatrix' parameter above: In the first run, you can set 'dataIsGeodesicDistMatrix = False' and 'saveDistMatrix = True' to store the geodesic distance matrix and in subsequent runs, you can load the geodesic distance matrix from the file it was stored in, and set 'dataIsGeodesicDistMatrix = True' (and 'saveDistMatrix = False') in order to avoid recomputing it.
+  saveDistMatrix = False, 
+  # if this is set to True, then the geodesic
+  # distance matrix, that is computed with the
+  # Dijkstra algorithm before the dimension 
+  # reduction, is stored. 
+  # Since the Dijkstra computation takes some 
+  # time, this can be quite useful in combination 
+  # with the 'dataIsGeodesicDistMatrix' parameter 
+  # above: In the first run, you can set 
+  # 'dataIsGeodesicDistMatrix = False' and 
+  # 'saveDistMatrix = True' to store the geodesic 
+  # distance matrix and in subsequent runs, you 
+  # can load the geodesic distance matrix from 
+  # the file it was stored in, and set 
+  # 'dataIsGeodesicDistMatrix = True' 
+  # (and 'saveDistMatrix = False') in order 
+  # to avoid recomputing it.
 
-  # The rest of the parameters only have an effect if 'metricMDS = True'. In that case, they influence the behaviour of the stochastic gradient descent (SGD) procedure that is used for metric multidimensional scaling.
-  sgd_n_epochs = 3000, 
+  # The rest of the parameters only have an effect 
+  # if 'metricMDS = True'. In that case, they 
+  # influence the behaviour of the stochastic 
+  # gradient descent (SGD) procedure that is 
+  # used for metric multidimensional scaling.
+  sgd_n_epochs = 1500, 
   sgd_lr=1e-2, 
   sgd_batch_size = None,
-  sgd_max_epochs_no_improvement = 100, 
+  sgd_max_epochs_no_improvement = 75, 
   sgd_loss = 'MSE', 
   sgd_saveplots_of_initializations=True, 
   sgd_saveloss=True
@@ -90,3 +145,5 @@ finalEmbedding, clusterLabels = isumap(
 Please note that, if `normalize = False`, and  `distBeyondNN = False` and `metricMDS = False`, then our algorithm produces as special case an efficient implementation of Isomap.
 
 In particular, we parallelized the implementation of the Dijkstra algorithm for computing geodesic distances, which results in better runtimes than the original implementation.
+
+The `clusterLabels` that are being returned in addition to the embedding only label disconnected components of the geodesic distance matrix (and hence are only suitable for a very rough clustering).
