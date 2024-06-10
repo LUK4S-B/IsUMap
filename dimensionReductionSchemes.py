@@ -9,7 +9,14 @@ from scipy.sparse import coo_matrix
 import numpy as np
 from sklearn.manifold import SpectralEmbedding
 
-def spectral_embedding(M,d,verbose):
+def spectral_embedding(M,d: int,verbose: bool):
+    r'''
+
+    :param M: np.ndarray(n,n) - distance matrix
+    :param d: int - target dimensionality
+    :param verbose: bool - prints info and timing if true
+    :return: spec_emb: np.ndarray (n,d) - low-dimensional representation of datapoints
+    '''
     if verbose:
         print("\nPerforming Spectral Embedding...")
     t0=time()
@@ -19,22 +26,57 @@ def spectral_embedding(M,d,verbose):
         printtime("Spectral embedding",t1-t0)
     return spec_emb
 
-def classical_multidimensional_scaling(M,d,verbose): 
+
+@njit(parallel=True)
+def squareNormalize(M):
+    r'''Perform squaring and double centering,
+    that is returns $CM^2C$, where $C=I-\frac{1}{n}\mathbb{1}_{n \times n}$
+
+    :param M: np.ndarray(n,n) - distance matrix
+    :return: M_squared np.ndarray(n,n) - squared and double centered distance matrix'''
+    M_squared = np.square(M)
+    N = M_squared.shape[0]
+    M_squared = M_squared - np.sum(M_squared,axis=0).reshape((1,N))/N
+    M_squared = M_squared - np.sum(M_squared,axis=1).reshape((N,1))/N
+    return M_squared
+
+@njit(parallel=True)
+def compY(U, v, d):
+    r'''
+    Computes the classical multidimensional scaling (cMDS) embedding
+    $Y = V^{\frac{1}{2}}U$
+
+    :param U: np.ndarray(n,n)  - eigenvectors
+    :param v: np.ndarray(n)    - eigenvalues
+    :param d: int              - target dimension
+    :return: Y: np.ndarray(n,d) - cMDS embedding
+    '''
+    v[v < 1e-14] = 0.0  # clean v in case of numerical errors
+    L = np.diag(np.sqrt(v))
+    Y = np.dot(U, L) / np.sqrt(d)
+    return Y
+
+
+def classical_multidimensional_scaling(M,d: int,verbose:bool):
+    r'''
+        Performs classical multidimensional scaling on a distance matrix.
+        This means that the for a given distance matrix $M$, we compute
+        $$H = -\frac{1}{2} C (M^2) C$$
+        where $C = I-\frac{1}{n}\mathbb{1}_{n\times n}$ is the centering matrix and the square is applied elementwise.
+        A low-dimensional projection of the $d$ datapoints is then obtained by the first $d$ eigenvectors of $H$, multiplied
+        with the square root of their eigenvalues.
+        $Y = V^{\frac{1}{2}}U$
+        where $V$ is a diagonal matrix of eigenvalues and $U$ is a matrix of eigenvectors
+
+
+        :param M: np.ndarray(n,n) - distance matrix
+        :param d: int - target dimensionality
+        :param verbose: bool - prints info and timing if true
+        :return: spec_emb: np.ndarray (n,d) - low-dimensional representation of datapoints
+        '''
     if verbose:
         print("\nPerforming classical MDS...")
     t0=time()
-    @njit(parallel=True)
-    def squareNormalize(M):
-        M_squared = np.square(M,M)
-        mean = np.sum(M_squared, axis=0) / M_squared.shape[0]
-        return np.subtract(M_squared, mean)
-    
-    @njit(parallel=True)
-    def compY(U,v,d):
-        v[v<1e-14] = 0.0 # clean v in case of numerical errors
-        L = np.diag(np.sqrt(v))
-        Y = np.dot(U,L)/np.sqrt(d)
-        return Y
 
     M = squareNormalize(M)
 
@@ -52,19 +94,68 @@ def classical_multidimensional_scaling(M,d,verbose):
         printtime("classical MDS",t1-t0)
     return cMDS
 
-def reduce_dim(D, d=2, n_epochs = 1000, lr=1e-2, batch_size = None,max_epochs_no_improvement = 100, loss = 'MSE', initialization="cMDS", labels=None, saveplots_of_initializations=True, metricMDS=True, saveloss=False, verbose=True):
-    if initialization=="cMDS":
+def reduce_dim(D, d:int=2,
+               n_epochs: int = 1000,
+               lr: float=1e-2,
+               batch_size = None,
+               max_epochs_no_improvement: int = 100,
+               loss = 'MSE',
+               initialization='cMDS',
+               labels=None,
+               saveplots_of_initializations:bool=True,
+               metricMDS:bool=True,
+               saveloss:bool=False,
+               verbose:bool=True):
+    '''
+
+    Applies a dimension reduction scheme to a distance matrix.
+    Dimension reduction is either achieved via classical or metric multidimensional scaling (MDS), or via
+    Laplacian eigenmaps (LE).
+    The latter is implemented as a stochastic gradient descent here.
+
+
+    :param D: np.ndarray (n,n) - distance matrix
+    :param d: int - dimension of embedding
+    :param n_epochs: int - number of epochs for SGD
+    :param lr: float -lr for SGD
+    :param batch_size: int - batch size for SGD
+    :param max_epochs_no_improvement: int - number of epochs until early stopping for SGD
+    :param loss: loss for SGD - one of ['MSE','Sammon'] or custom los
+    :param initialization: initialization, must be one of ['cMDS','spectral','random'] or a np.ndarray.
+                           if metricMDS =False, this is the final embedding that is used. 'spectral' is for LE.
+    :param labels: cluster labels for connected components
+    :param saveplots_of_initializations: bool - whether to save plots of data initialization
+    :param metricMDS: bool - if True, metric MDS is performed
+    :param saveloss: bool - if True, plots of SGD loss are saved
+    :param verbose: bool - if True, prints progress and time info
+    :return metric_mds_embedding: np.ndarray(n,d) - embedding of data points in d dimension.
+    '''
+
+
+
+    if initialization=='cMDS':
         init = classical_multidimensional_scaling(D,d,verbose)
-    elif initialization=="spectral":
+    elif initialization=='spectral':
         init = spectral_embedding(D,d,verbose)
-    else:
+    elif initialization =='random':
         init = np.random.rand(D.shape[0],d)
         if verbose:
             print("Finished random initialization.")
 
+    elif isinstance(initialization,np.ndarray):
+        if initialization.shape == (D.shape[0], d):
+            init = initialization
+            initialization='custom'
+        else:
+            raise ValueError('Provided ndarray does not match required dimensions (D.shape[0], d).')
+    else:
+        raise ValueError(
+            'Initialization must be one of "cMDS", "spectral", "random", or a NumPy array with shape (D.shape[0], d).')
+
+
     if saveplots_of_initializations:
-        plot_data(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
-        print("Result of the initialization was stored in a file.\n")
+            plot_data(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
+            print("Result of the initialization was stored in a file.\n")
 
     if metricMDS:
         print("\nPerforming metric MDS...")

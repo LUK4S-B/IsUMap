@@ -8,6 +8,7 @@ from tqdm import tqdm
 from data_and_plots import saveTotalLossPlots
 
 class IndexDataset(Dataset):
+    ''' A Dataset class to return submatrices of distance matrices together with the corresponding indices.'''
     def __init__(self, distance_matrix):
 
         self.distance_matrix = distance_matrix
@@ -32,6 +33,12 @@ class IndexDataset(Dataset):
         return indices, submatrix
 
 class SammonLoss(nn.modules.loss._Loss):
+    r'''
+    Loss class implementing the sammon loss for multdimensional scaling.
+    The sammon loss of a collection of target distances $d_{ij}$ and approximate distances $\rho_{ij}$ is given by
+    $$L = \sum_{ij} \vert \vert \frac{\rho_{ij}}{\sqrt{d_{ij}}} - d_{ij} \vert \vert$$
+
+    '''
     def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
         super().__init__(size_average, reduce, reduction)
 
@@ -41,18 +48,42 @@ class SammonLoss(nn.modules.loss._Loss):
         y = torch.sqrt(target[notnull])
         return nn.functional.mse_loss(x, y, reduction=self.reduction)
 
-def sgd_mds(D,initialData,n_epochs = 1000, lr=1e-2, batch_size = None, max_epochs_no_improvement = 100, loss = 'MSE', saveloss=False):
+def sgd_mds(D,initialData,
+            n_epochs:int = 1000,
+            lr:float=1e-2,
+            batch_size = None,
+            max_epochs_no_improvement = 100,
+            loss = 'MSE',
+            saveloss:bool=False):
+
+    r'''
+
+    Performs (metric) multidimensional scaling via a stochastic gradient descent (SGD).
+    Given a set of target distances $D \in \mathbb{R}^{n \times n}$, points in a lower dimensional space $y_1,...,y_n$
+    are optimized via SGD by means of minimizing a loss function $L(D,D_Y)$ where $D_Y$ is the distance matrix
+    of the points $y_i$.
+
+    :param D: np.ndarray or torch.tensor shape: (n,n)
+    :param initialData: np.ndarray or torch.tensor, shape: (n,d)
+    :param n_epochs: int, number of epochs
+    :param lr: float, learning rate
+    :param batch_size: int or None, number of samples per batch, if None then default value of D.shape[0]/10
+    :param max_epochs_no_improvement: int, max number of epochs without improvement that triggers early stopping
+    :param loss: str or torch.nn.modules.loss._Loss, loss function, implemented are 'MSE' and 'Sammon'
+    :param saveloss: bool, whether to save loss progress
+    :return: X: np.ndarray (n,d) - low dimensional embedding
+    '''
+
 
     N = D.shape[0]
     if batch_size == None:
         batch_size = round(N/10)
     
     dataDtype = initialData.dtype
-    if dataDtype!=np.float32:
-        initialData = initialData.astype('float32')
-    init = torch.from_numpy(initialData).type(torch.float32)
-    
-    D = torch.tensor(D).float()
+    init = convert_to_torch_float32(initialData)
+    D = convert_to_torch_float32(D)
+
+
     X = torch.nn.Parameter(init)
     optimizer = optim.Adam([X], lr=lr)
 
@@ -63,6 +94,11 @@ def sgd_mds(D,initialData,n_epochs = 1000, lr=1e-2, batch_size = None, max_epoch
         loss_fn = nn.MSELoss()
     elif loss =='Sammon':
         loss_fn = SammonLoss()
+    elif isinstance(loss,nn.modules.loss._Loss):
+        loss_fn = loss
+    else:
+        raise NotImplementedError
+
 
     best_total_loss = float('inf')
     epochs_no_improve = 0
@@ -105,3 +141,23 @@ def sgd_mds(D,initialData,n_epochs = 1000, lr=1e-2, batch_size = None, max_epoch
     return X.detach().numpy().astype(dataDtype)
 
 
+def convert_to_torch_float32(initialData):
+    # Check if the input data is a NumPy array
+    if isinstance(initialData, np.ndarray):
+        # Ensure the data type is float32
+        if initialData.dtype != np.float32:
+            initialData = initialData.astype('float32')
+        # Convert the NumPy array to a PyTorch tensor
+        init = torch.from_numpy(initialData)
+    # Check if the input data is a PyTorch tensor
+    elif isinstance(initialData, torch.Tensor):
+        # Ensure the data type is float32
+        if initialData.dtype != torch.float32:
+            initialData = initialData.to(dtype=torch.float32)
+        init = initialData
+    else:
+        raise TypeError('Initial data must be either a NumPy array or a PyTorch tensor.')
+
+    # Ensure the tensor type is torch.float32 (redundant but explicitly safe)
+    init = init.type(torch.float32)
+    return init
