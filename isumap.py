@@ -9,11 +9,12 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
+import torch
 
 def dijkstra_wrapper(graph, i):
     return dijkstra(csgraph=graph, indices=i)
 
-def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, dataIsDistMatrix=False, dataIsGeodesicDistMatrix = False, saveDistMatrix = False, labels=None, initialization="cMDS", metricMDS=True, sgd_n_epochs = 1000, sgd_lr=1e-2, sgd_batch_size = None,sgd_max_epochs_no_improvement = 100, sgd_loss = 'MSE', sgd_saveplots_of_initializations=True, sgd_saveloss=False):
+def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, dataIsDistMatrix=False, dataIsGeodesicDistMatrix = False, saveDistMatrix = False, labels=None, initialization="cMDS", metricMDS=True, sgd_n_epochs = 1000, sgd_lr=1e-2, sgd_batch_size = None,sgd_max_epochs_no_improvement = 100, sgd_loss = 'MSE', sgd_saveplots_of_initializations=True, sgd_saveloss=False, tconorm = "canonical"):
     if verbose:
         print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
@@ -78,21 +79,52 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
             R[i,knn_inds[i]] = distance[i]
         return R
     
-    @njit(parallel=True)
-    def compDataD(knn_inds,R,N):
-        RT = R.transpose()
-        data_D = np.zeros((N,N))
-        for i in prange(N):
-            for j in knn_inds[i]:
-                Rij = R[i,j]
-                RTij = RT[i,j]
-                if Rij != 0 and RTij != 0:
-                    r = np.minimum(Rij,RTij)
-                else:
-                    r = np.maximum(Rij,RTij)
-                data_D[i,j] = r
-                data_D[j,i] = r
-        return data_D
+    def compDataD(knn_inds,R,N,tconorm="canonical"):
+        if tconorm != "canonical":
+            R = torch.from_numpy(R) # convert to torch tensor to perform operations below in parallel
+            R[R != 0] = torch.exp(-R[R != 0])
+            RT = R.t()
+
+            if tconorm == "probabilistic sum":
+                data_D = R + RT - R * RT
+            elif tconorm == "bounded sum":
+                data_D = torch.minimum(R+RT,torch.ones_like(R))
+            elif tconorm == "drastic sum":
+                data_D = torch.zeros_like(R)
+                data_D[(R != 0) & (RT == 0)] = R[(R != 0) & (RT == 0)]
+                data_D[(R == 0) & (RT != 0)] = RT[(R == 0) & (RT != 0)]
+                data_D[(R != 0) & (RT != 0)] = 1
+            elif tconorm == "Einstein sum":
+                data_D = (R+RT)/(1+R*RT)
+            elif tconorm == "nilpotent maximum":
+                data_D = torch.zeros_like(R)
+                whereSumLowerOne = (R+RT<1)
+                data_D[whereSumLowerOne] = torch.maximum(R[whereSumLowerOne],RT[whereSumLowerOne])
+                data_D[~whereSumLowerOne] = torch.ones_like(R)[~whereSumLowerOne]
+            else: # alternative implementation of canonical max-t-conorm
+                data_D = torch.maximum(R,RT)
+            # feel free to add your favourite t-conorm here
+        
+            data_D[data_D!=0] = -torch.log(data_D[data_D!=0])
+            data_D = data_D.numpy()
+            return data_D
+        else: # the canonical (max) - t-conorm can be handled in a way that ensures that we spend at most Nxk operations:
+            @njit(parallel=True) # use numba for parallelization
+            def maxDataD(knn_inds,R,N):
+                RT = R.transpose()
+                data_D = np.zeros((N,N))
+                for i in prange(N):
+                    for j in knn_inds[i]:
+                        Rij = R[i,j]
+                        RTij = RT[i,j]
+                        if Rij != 0 and RTij != 0:
+                            r = np.minimum(Rij,RTij)
+                        else:
+                            r = np.maximum(Rij,RTij)
+                        data_D[i,j] = r
+                        data_D[j,i] = r
+                return data_D
+            return maxDataD(knn_inds,R,N)
     
     @njit
     def extractSubmatrices(D):
@@ -144,7 +176,7 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
     def subMatrixEmbeddings(nc, SM, meanPointEmbeddings):
         subMatrixEmbeddings = []
         for i in range(nc):
-            subMatrixEmbeddings.append(reduce_dim(SM[i][0], d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization=initialization, labels=labels, saveplots_of_initializations=sgd_saveplots_of_initializations, metricMDS=metricMDS, saveloss=sgd_saveloss,verbose=verbose))
+            subMatrixEmbeddings.append(reduce_dim(SM[i][0], d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization=initialization, labels=labels, saveplots_of_initializations=sgd_saveplots_of_initializations, metricMDS=metricMDS, saveloss=sgd_saveloss,verbose=verbose,tconorm=tconorm, clusternumber=i))
             subMatrixEmbeddings[i] += meanPointEmbeddings[i] # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixEmbeddings[i]-matrix
         return subMatrixEmbeddings
 
@@ -167,11 +199,12 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
 
         t0=time()
         R = compR(knn_inds,distance,N)
-        data_D = compDataD(knn_inds, R, N)
+        data_D = compDataD(knn_inds, R, N, tconorm=tconorm)
         t1 = time()
         if verbose:
-            printtime("Neighbourhoods merged in",t1-t0)
+            printtime("Merged neighbourhoods with tconorm",t1-t0)
         
+
         print("\nRunning Dijkstra...")
         t0 = time()
         graph = csr_matrix(data_D)
@@ -221,7 +254,7 @@ def isumap(data, k, d, normalize = True, distBeyondNN = True, verbose=True, data
             printtime("Euclidean distances",t1-t0)
         
         t0 = time()
-        meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", labels=labels, saveplots_of_initializations=False, metricMDS=False, saveloss=False, verbose=verbose)
+        meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", labels=labels, saveplots_of_initializations=False, metricMDS=False, saveloss=False, verbose=verbose, tconorm=tconorm)
         t1 = time()
         if verbose:
             printtime("Embedded the cluster mean points in",t1-t0)

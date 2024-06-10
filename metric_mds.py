@@ -46,6 +46,12 @@ def sgd_mds(D,initialData,n_epochs = 1000, lr=1e-2, batch_size = None, max_epoch
     N = D.shape[0]
     if batch_size == None:
         batch_size = round(N/10)
+        if batch_size == 0:
+            if N>1:
+                print("Directly returning initial embedding because there are only " + str(N) + " points in the cluster")
+            else:
+                print("Directly returning initial embedding because there is only " + str(N) + " point in the cluster")
+            return initialData
     
     dataDtype = initialData.dtype
     if dataDtype!=np.float32:
