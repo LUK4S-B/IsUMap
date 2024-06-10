@@ -128,6 +128,14 @@ finalEmbedding, clusterLabels = isumap(
   # (and 'saveDistMatrix = False') in order 
   # to avoid recomputing it.
 
+  tconorm = "canonical",
+  # The t-conorm that is used for symmetrization of the 
+  # distances of the local neighbourhoods during the 
+  # merging procedure (see our articles cited above for 
+  # more details). One can choose among the following options: 
+  # "canonical","probabilistic sum", "bounded sum", 
+  # "drastic sum", "Einstein sum", "nilpotent maximum"
+
   # The rest of the parameters only have an effect 
   # if 'metricMDS = True'. In that case, they 
   # influence the behaviour of the stochastic 

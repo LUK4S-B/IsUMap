@@ -6,7 +6,7 @@ from multiprocessing import cpu_count
 
 k = 15
 d = 2
-N = 1000
+N = 3000
 normalize = True
 metricMDS = True
 distBeyondNN = True
