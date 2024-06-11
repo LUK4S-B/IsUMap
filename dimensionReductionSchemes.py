@@ -105,8 +105,9 @@ def reduce_dim(D, d:int=2,
                saveplots_of_initializations:bool=True,
                metricMDS:bool=True,
                saveloss:bool=False,
-               verbose:bool=True):
-    '''
+               verbose:bool=True, 
+               tconorm="canonical"):
+    r'''
 
     Applies a dimension reduction scheme to a distance matrix.
     Dimension reduction is either achieved via classical or metric multidimensional scaling (MDS), or via
@@ -128,6 +129,7 @@ def reduce_dim(D, d:int=2,
     :param metricMDS: bool - if True, metric MDS is performed
     :param saveloss: bool - if True, plots of SGD loss are saved
     :param verbose: bool - if True, prints progress and time info
+    :param tconorm: t-conorm for merging - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
     :return metric_mds_embedding: np.ndarray(n,d) - embedding of data points in d dimension.
     '''
 
@@ -154,7 +156,7 @@ def reduce_dim(D, d:int=2,
 
 
     if saveplots_of_initializations:
-            plot_data(init,labels,title = initialization + " initialization with N = " + str(D.shape[0]))
+            plot_data(init,labels,title = initialization + " initialization with N_" + str(D.shape[0]) + " tconorm_" + tconorm)
             print("Result of the initialization was stored in a file.\n")
 
     if metricMDS:
