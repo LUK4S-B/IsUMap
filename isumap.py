@@ -11,6 +11,9 @@ from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
 import torch
 
+eps = np.finfo(np.float32).tiny
+
+
 def dijkstra_wrapper(graph, i):
     return dijkstra(csgraph=graph, indices=i)
 
@@ -89,9 +92,10 @@ def normalization(distances, normalize:bool, distBeyondNN:bool):
                 distances[i] = distances[i] / mdi
     elif distBeyondNN == True and normalize == False:
         for i in prange(distances.shape[0]):
+
             #it might be possible to simplify the computations below if distances are already ordered
             ind_m1, m2 = two_smallest(distances[i])
-            distances[i] = distances[i] - m2
+            distances[i] = distances[i] - m2+eps
             distances[i][ind_m1] = 0.0
     elif distBeyondNN == False and normalize == True:
         for i in prange(distances.shape[0]):
