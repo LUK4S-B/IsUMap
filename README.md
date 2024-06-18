@@ -5,7 +5,7 @@ IsUMap is a dimension reduction and data visualization tool, that can be viewed 
 The theoretical basis of IsUMap is explained in the following publication:
   - [Fuzzy simplicial sets and their application to geometric data analysis](https://arxiv.org/abs/2406.11154)
 
-Please cite them when using IsUMap.
+Please cite it when using IsUMap.
 
 # Usage
 
