@@ -12,7 +12,7 @@ import numpy as np
 import random
 import tensorflow_datasets as tfds
 
-def load_cifar10_data(pickle_file='cifar10_data.pkl', N=100):
+def load_cifar10_data(pickle_file='./../Dataset_files/cifar10_data.pkl', N=100):
     if os.path.exists(pickle_file):
         with open(pickle_file, 'rb') as f:
             data = pickle.load(f)
