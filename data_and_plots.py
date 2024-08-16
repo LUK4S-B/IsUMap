@@ -124,15 +124,13 @@ def load_and_store_data_file(N,filename,filetype='.pkl'):
             pickle.dump((data, labels), f)
 
         print("Download successful. The files are stored in 'Dataset_files/"+filename+filetype+"' and are directly loaded from there in case you run this script a second time.")
-    else:
-        print("\nLoading '"+filename+"' data from file")
-        with open('Dataset_files/'+filename+filetype, 'rb') as f:
-            data, labels = pickle.load(f)
-        data = data.values
-        print("Selecting subset of N = ",N)
-        indices = random.sample(range(len(data)), N)
-        data = data[indices]
-        labels = labels[indices]
+    print("\nLoading '"+filename+"' data from file")
+    with open('Dataset_files/'+filename+filetype, 'rb') as f:
+        data, labels = pickle.load(f)
+    print("Selecting subset of N = ",N)
+    indices = random.sample(range(len(data)), N)
+    data = np.array(data[indices],dtype=np.float32)
+    labels = np.array(labels[indices],dtype=np.int64)
     return data,labels
 
 def load_MNIST(N):
@@ -183,7 +181,7 @@ def plot_data(data,labels,title='Data',save=True,display=False):
         if display:
             plt.show()
 
-def saveTotalLossPlots(total_losses,N):
+def saveTotalLossPlots(total_losses,N,title='Loss per epoch'):
     # Plot total loss
     plt.figure()
     plt.plot((total_losses))
@@ -191,12 +189,11 @@ def saveTotalLossPlots(total_losses,N):
     plt.ylabel('Total Loss')
     # plt.xscale('log')
     plt.yscale('log')
-    plt.title('Total Loss per Epoch')
-    # Create the output directory if it doesn't exist
-    os.makedirs('Results', exist_ok=True)
-    os.makedirs('Results/Losses', exist_ok=True)
-    plt.savefig('./Results/Losses/N_'+str(N)+'_total_loss.png')
-
+    plt.title(title)
+    loss_graph_path = './Loss_graphs/'
+    if not os.path.exists(loss_graph_path):
+        os.makedirs(loss_graph_path)
+    plt.savefig(loss_graph_path+str(N)+title+'.png')
 
 
 ### other helper functions

@@ -141,8 +141,8 @@ def sgd_mds(D,initialData,
             break
     
     if saveloss:
-        saveTotalLossPlots(total_losses,N)
-        print('A plot of the loss over epochs was stored in ./Results/Losses/N_'+str(N)+'_total_loss.png\n')
+        saveTotalLossPlots(total_losses,N,'Metric MDS - Loss per epoch')
+        print('A plot of the loss over epochs was stored in ./Loss_graphs/N_'+str(N)+'_total_loss.png\n')
 
     return X.detach().numpy().astype(dataDtype)
 
