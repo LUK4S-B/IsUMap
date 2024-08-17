@@ -7,7 +7,7 @@ from sklearn.utils import check_random_state
 from time import time
 from isumap import isumap  
 
-fig_dir = '/user/people/fahimi/Documents/IsUMAP_diff_conorm/isumap_diff_t-conorm_results/isumap_hemisphere/'
+fig_dir = './../results/further_rollig_swissRoll/'
 
 # Generate random data
 def make_swiss_roll(n_samples=1000, s=1, noise=0.0, random_state=None):
@@ -79,7 +79,7 @@ for i in S:
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')
         #plt.title(f'Reduced Data using ISUMAP (s={i}, NN={n})')
-        plt.savefig(fig_dir + f'reduced_data_isumap_{i}_{n}.png')
+        plt.savefig(fig_dir + f'isumap_swissRoll_Further_roll_{i}_{n}.png')
         plt.close()
 
 

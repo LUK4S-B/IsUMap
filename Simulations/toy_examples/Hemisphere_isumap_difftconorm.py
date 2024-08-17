@@ -5,7 +5,7 @@ from sklearn.utils import check_random_state
 from time import time
 from isumap import isumap  
 
-fig_dir = '/usr/people/./IsUMAP_diff_conorm/results/Mammoth/'
+fig_dir = './../results/Hemisphere'
 
 # Set the seed for reproducibility
 np.random.seed(0)

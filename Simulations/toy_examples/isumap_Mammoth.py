@@ -11,10 +11,10 @@ from time import time
 from isumap import isumap 
 import umap
 
-fig_dir = '/usr/people/fahimi/Documents/IsUMAP_diff_conorm/results/Mammoth/'
+fig_dir = './../results/Mammoth'
 
 # Mammoth
-mammoth = pd.read_csv('/usr/people/fahimi/Documents/datasets/mammoth_a.csv')
+mammoth = pd.read_csv('./../Mammoth_dataset/mammoth_a.csv')
 mammoth_sample = mammoth.sample(20000)
 n_neighbors=20
 
