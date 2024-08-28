@@ -1,3 +1,14 @@
+import os
+import sys
+
+# Set the path to the directory containing `isumap.py`
+PATH_CURRENT = "../"  # Adjust this path as needed
+
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
+
+
+
 from utils import *
 import matplotlib.pyplot as plt
 import h5py
@@ -7,7 +18,6 @@ from sklearn import preprocessing
 from scipy.spatial.distance import pdist, squareform
 from datetime import datetime
 import time
-import os
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors
 from persim import plot_diagrams
@@ -27,11 +37,12 @@ def custom_plot_barcode(diagrams, title="Barcode"):
 
     return fig, ax
 
-fig_dir = ":/../results/Grid_cell"
+fig_dir = "./../results/Grid_cell/"
 rat_name = 'R'
 mod_name = '1'
 sess_name = 'OF'
 day_name = 'day1'
+
 
 sspikes = get_spikes(rat_name, mod_name, day_name, sess_name, bType='pure',
                      bSmooth=True, bSpeed=True)[0]
@@ -50,7 +61,7 @@ num_times = 5
 n_points = 1200
 nbs = 800
 sigma = 1500
-folder = '/net/st1/export/clusterhome/fahimi/Documents/Grid_cell/'
+folder = 'https://figshare.com/articles/dataset/Toroidal_topology_of_population_activity_in_grid_cells/16764508?file=35078602'
 
 # Iterates over the different datasets
 for rat_name, mod_name, sess_name, day_name in [('R', '1', 'OF', 'day1')]:

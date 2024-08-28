@@ -1,3 +1,13 @@
+import os
+import sys
+
+# Set the path to the directory containing `isumap.py`
+PATH_CURRENT = "../"  # Adjust this path as needed
+
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
+
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,10 +21,10 @@ from time import time
 from isumap import isumap 
 import umap
 
-fig_dir = './../results/Mammoth'
+fig_dir = './../results/Mammoth/'
 
 # Mammoth
-mammoth = pd.read_csv('./../Mammoth_dataset/mammoth_a.csv')
+mammoth = pd.read_csv('./../../Dataset_files/mammoth.csv')
 mammoth_sample = mammoth.sample(20000)
 n_neighbors=20
 

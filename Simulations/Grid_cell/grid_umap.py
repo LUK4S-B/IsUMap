@@ -11,7 +11,7 @@ import umap
 import os
 
 # Set directory and parameters
-fig_dir = ":/../results"
+fig_dir = "./../results/Grid_cell/"
 rat_name = 'R'
 mod_name = '1'
 sess_name = 'OF'
@@ -32,7 +32,7 @@ num_times = 5
 n_points = 1200
 nbs = 800
 sigma = 1500
-folder = '/net/st1/export/clusterhome/fahimi/Documents/Grid_cell/'
+folder = 'https://figshare.com/articles/dataset/Toroidal_topology_of_population_activity_in_grid_cells/16764508?file=35078602'
 
 def neg_exp(t):
     return np.exp(-t)

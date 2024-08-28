@@ -1,3 +1,13 @@
+import os
+import sys
+
+# Set the path to the directory containing `isumap.py`
+PATH_CURRENT = "../"  # Adjust this path as needed
+
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # Required for 3D plotting
@@ -5,7 +15,7 @@ from sklearn.utils import check_random_state
 from time import time
 from isumap import isumap  
 
-fig_dir = './../results/Hemisphere'
+fig_dir = './../results/Hemisphere/'
 
 # Set the seed for reproducibility
 np.random.seed(0)
