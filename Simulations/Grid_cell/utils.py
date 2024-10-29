@@ -1,3 +1,5 @@
+# The code in this file was copied, with kind permission, from https://github.com/erikher/GridCellTorus
+
 from datetime import datetime 
 import functools
 import glob

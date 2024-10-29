@@ -2,10 +2,11 @@
 
 IsUMap is a dimension reduction and data visualization tool, that can be viewed as a combination of the manifold learning algorithms [UMAP](https://github.com/lmcinnes/umap) and [Isomap](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.Isomap.html).
 
-The theoretical basis of IsUMap is explained in the following publication:
+The theoretical basis of IsUMap is explained in the following publications:
   - [Fuzzy simplicial sets and their application to geometric data analysis](https://arxiv.org/abs/2406.11154)
+  - [IsUMap: Manifold Learning and Data Visualization leveraging Vietoris-Rips filtrations](https://arxiv.org/abs/2407.17835)
 
-Please cite it when using IsUMap.
+Please cite them when using IsUMap.
 
 # Usage
 
