@@ -10,10 +10,11 @@ from functools import partial
 from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
 import torch
+import warnings
 
 eps = np.finfo(np.float32).tiny
 
-
+IMPLEMENTED_PHIS = ['exp','half_normal','log_normal','pareto','uniform']
 def dijkstra_wrapper(graph, i):
     return dijkstra(csgraph=graph, indices=i)
 
@@ -120,7 +121,7 @@ def compR(knn_inds, distance):
         R[i, knn_inds[i]] = distance[i]
     return R
 
-def compDataD(knn_inds,R,N,tconorm="canonical"):
+def compDataD(knn_inds,R,N,tconorm="canonical",phi = None,phi_inv=None):
     r'''
     Symmetrizes a $(n,n)$ (sparse) matrix of nearest neighbor distances. The input matrix $R$ is assumed to contain
     non-zero entries only at nearest neighbor positions. We symmetrize by taking 
@@ -133,9 +134,13 @@ def compDataD(knn_inds,R,N,tconorm="canonical"):
     :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
     :return data_D: np.ndarray (n,n) - distance matrix
     '''
+
+    if phi is None:
+        phi = lambda x: torch.exp(-x)
+        phi_inv = lambda x: -torch.log(x)
     if tconorm != "canonical":
         R = torch.from_numpy(R)
-        R[R != 0] = torch.exp(-R[R != 0])
+        R[R != 0] = phi(R[R != 0])
         RT = R.t()
 
         if tconorm == "probabilistic sum":
@@ -158,7 +163,7 @@ def compDataD(knn_inds,R,N,tconorm="canonical"):
             data_D = torch.maximum(R,RT)
         # feel free to add your favourite t-conorm here
 
-        data_D[data_D!=0] = -torch.log(data_D[data_D!=0])
+        data_D[data_D!=0] = phi_inv(data_D[data_D!=0])
         data_D = data_D.numpy()
         return data_D
     else: # the canonical (max) - t-conorm can be handled in a way that ensures that we spend at most Nxk operations:
@@ -287,7 +292,10 @@ def isumap(data,
            sgd_loss = 'MSE',
            sgd_saveplots_of_initializations:bool=True,
            sgd_saveloss: bool=False,
-           tconorm = "canonical"):
+           tconorm = "canonical",
+           phi = None,
+           phi_inv = None,
+           **phi_params):
 
     '''
 
@@ -322,6 +330,11 @@ def isumap(data,
     :param sgd_saveplots_of_initializations: bool - whether to save plots of SGD initialization
     :param sgd_saveloss:  bool - whether to save plots of SGD loss
     :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
+    :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
+    If a string, must be one of IMPLEMENTED_PHIS. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
+    Does not do anything if t-conorm is 'canonical'.
+    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inveres of phi.
+    :param **phi_params**: additional parameters to pass to the phi function.
     :return finalEmbedding: np.ndarray (n,d) - points in low dimension
     :return clusterLabels: labels of connected components
 
@@ -335,6 +348,71 @@ def isumap(data,
 
 
     '''
+
+    if (phi is not None) and (tconorm=='canonical'):
+        warnings.warn('When using the canonical t-conorm, phi is irrelevant. If you intended to use a different phi, use one of the other t-conorms')
+
+
+
+    if ((callable(phi) and (not callable(phi_inv)))) or ((callable(phi_inv) and (not callable(phi)))):
+
+        raise TypeError('If you manually provide phi/phi_inv, you also have to provide the other one. Both have to be callable.')
+
+    elif isinstance(phi,str):
+
+        if phi not in IMPLEMENTED_PHIS:
+            raise ValueError(
+                f"Provided string does not match any of the currently implemented phis. "
+                f"Valid choices are: {', '.join(IMPLEMENTED_PHIS)}"
+            )
+        if phi == 'exp':
+
+            scale = phi_params.get('scale',1.0)
+            phi = lambda x: torch.exp(-x/scale)
+            phi_inv = lambda x: -torch.log(x)*scale
+
+
+        elif phi =='half_normal':
+
+            scale = phi_params.get('scale',1.0)
+            sqrt2 = torch.sqrt(torch.tensor(2.0))
+            phi = lambda x: 1.0-torch.erf(x/(sqrt2*scale))
+            phi_inv = lambda x: sqrt2*scale*torch.erfinv(1.0-x)
+
+
+        elif phi =='log_normal':
+            scale = phi_params.get('scale', 1.0)
+            sqrt2 = torch.sqrt(torch.tensor(2.0))
+
+            phi = lambda x: 1.0- (1.0 + torch.erf(torch.log(x)/(sqrt2*scale)))/2.0
+            phi_inv = lambda x: torch.exp(sqrt2*scale*torch.erfinv(1.0-2*x))
+
+        elif phi=='pareto':
+
+            scale = phi_params.get('scale',1.0)
+            shape = phi_params.get('shape',2.0)
+
+            phi = lambda x: torch.exp(-shape*torch.log1p(x / scale))
+            phi_inv = lambda x: scale*(torch.exp(-torch.log1p(x-1.0) / shape)-1.0)
+   
+        elif phi =='uniform':
+
+            if normalize == False:
+                scale = data.max()
+
+            else:
+                scale = 1.0
+
+
+            phi = lambda x: x/scale
+
+            phi_inv = lambda x: scale*x
+
+
+
+
+        
+        
     if verbose:
         print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
@@ -358,7 +436,7 @@ def isumap(data,
 
         t0=time()
         R = compR(knn_inds,distance)
-        data_D = compDataD(knn_inds, R, N, tconorm = tconorm)
+        data_D = compDataD(knn_inds, R, N, tconorm = tconorm,phi=phi,phi_inv=phi_inv)
         t1 = time()
         if verbose:
             printtime("Neighbourhoods merged in",t1-t0)
