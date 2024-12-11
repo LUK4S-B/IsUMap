@@ -331,7 +331,7 @@ def isumap(data,
     :param sgd_saveloss:  bool - whether to save plots of SGD loss
     :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
     :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
-    If a string, must be one of IMPLEMENTED_PHIS. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
+    If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
     Does not do anything if t-conorm is 'canonical'.
     :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inveres of phi.
     :param **phi_params**: additional parameters to pass to the phi function.
