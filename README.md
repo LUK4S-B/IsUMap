@@ -8,6 +8,8 @@ The theoretical basis of IsUMap is explained in the following publications:
 
 Please cite them when using IsUMap.
 
+Note that an appendix that contains additional theoretical aspects and numerical experiments is given in the `Appendix` folder.
+
 # Usage
 
 Right now, we do not yet provide IsUMap as a package. 
