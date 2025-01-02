@@ -54,7 +54,8 @@ def sgd_mds(D,initialData,
             batch_size = None,
             max_epochs_no_improvement = 100,
             loss = 'MSE',
-            saveloss:bool=False):
+            saveloss:bool=False, 
+            verbose=True):
 
     r'''
 
@@ -113,7 +114,12 @@ def sgd_mds(D,initialData,
         # Initialize lists to store losses for each epoch
         total_losses = []
 
-    for epoch in tqdm(range(n_epochs)): # tqdm gives a progress bar in the terminal
+    if verbose:
+        ran = tqdm(range(n_epochs))
+    else:
+        ran = range(n_epochs)
+
+    for epoch in ran: # tqdm gives a progress bar in the terminal
         total_loss = 0
         for indices, distance_submatrices in dataloader:
 
@@ -137,12 +143,14 @@ def sgd_mds(D,initialData,
             epochs_no_improve += 1
 
         if epochs_no_improve ==max_epochs_no_improvement:
-            print(f'Convergence. Early stopping at epoch {epoch}!')
+            if verbose:
+                print(f'Convergence. Early stopping at epoch {epoch}!')
             break
     
     if saveloss:
         saveTotalLossPlots(total_losses,N,'Metric MDS - Loss per epoch')
-        print('A plot of the loss over epochs was stored in ./Loss_graphs/N_'+str(N)+'_total_loss.png\n')
+        if verbose:
+            print('A plot of the loss over epochs was stored in ./Loss_graphs/N_'+str(N)+'_total_loss.png\n')
 
     return X.detach().numpy().astype(dataDtype)
 
