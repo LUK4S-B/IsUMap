@@ -51,7 +51,8 @@ def compY(U, v, d):
     :param d: int              - target dimension
     :return: Y: np.ndarray(n,d) - cMDS embedding
     '''
-    v[v < 1e-14] = 0.0  # clean v in case of numerical errors
+    v[v < 1e-14] = 0.0  # clean v in case of numerical errors 
+    # and add a small number to prevent the points from collapsing to a single point in the embedding. Metric MDS can then push appart almost collapsed points.
     L = np.diag(np.sqrt(v))
     Y = np.dot(U, L) / np.sqrt(d)
     return Y
@@ -82,6 +83,7 @@ def classical_multidimensional_scaling(M,d: int,verbose:bool):
 
     if M.shape[0] < d: # handle the case where the number of points is lower than the embedding dimension
         v, U = PyLanczos(-M, True, M.shape[0]).run() 
+
         cMDS_Mshape = compY(U,v,M.shape[0])
         cMDS = np.zeros((M.shape[0],d))
         cMDS[:, :M.shape[0]] = cMDS_Mshape
@@ -101,12 +103,9 @@ def reduce_dim(D, d:int=2,
                max_epochs_no_improvement: int = 100,
                loss = 'MSE',
                initialization='cMDS',
-               labels=None,
-               saveplots_of_initializations:bool=True,
                metricMDS:bool=True,
                saveloss:bool=False,
-               verbose:bool=True, 
-               tconorm="canonical"):
+               verbose:bool=True):
     r'''
 
     Applies a dimension reduction scheme to a distance matrix.
@@ -133,8 +132,6 @@ def reduce_dim(D, d:int=2,
     :return metric_mds_embedding: np.ndarray(n,d) - embedding of data points in d dimension.
     '''
 
-
-
     if initialization=='cMDS':
         init = classical_multidimensional_scaling(D,d,verbose)
     elif initialization=='spectral':
@@ -154,15 +151,14 @@ def reduce_dim(D, d:int=2,
         raise ValueError(
             'Initialization must be one of "cMDS", "spectral", "random", or a NumPy array with shape (D.shape[0], d).')
 
-
-    if saveplots_of_initializations:
-            plot_data(init,labels,title = initialization + " initialization with N_" + str(D.shape[0]) + " tconorm_" + tconorm)
-            print("Result of the initialization was stored in a file.\n")
+    # add a bit of noise for stability:
+    init += np.random.random(init.shape) * 1e-12
 
     if metricMDS:
-        print("\nPerforming metric MDS...")
-        metric_mds_embedding = sgd_mds(D, init, n_epochs=n_epochs, lr=lr, batch_size=batch_size, max_epochs_no_improvement=max_epochs_no_improvement, loss=loss, saveloss=saveloss)
+        if verbose:
+            print("\nPerforming metric MDS...")
+        metric_mds_embedding = sgd_mds(D, init, n_epochs=n_epochs, lr=lr, batch_size=batch_size, max_epochs_no_improvement=max_epochs_no_improvement, loss=loss, saveloss=saveloss, verbose=verbose)
     else:
         metric_mds_embedding = init
 
-    return metric_mds_embedding
+    return init, metric_mds_embedding

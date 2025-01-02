@@ -7,11 +7,21 @@ from sklearn.utils import check_random_state
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 import pandas as pd
 import random
 import pickle
 import os
 import pickle
+import plotly.express as px
+import torchvision
+
+def plotly_data(data,labels,title):
+    fig = px.scatter(x=data[:,0],y=data[:,1],color=labels); 
+    fig.layout.yaxis.scaleanchor="x"
+    fig.layout.paper_bgcolor='rgba(0,0,0,0)'
+    fig.layout.plot_bgcolor='rgba(0,0,0,0)'
+    fig.write_html("./Results/"+title+".html")
 
 def createFourGaussians(distance,numberOfPoints):
     def generate_points(means,covs,ns):
@@ -109,16 +119,78 @@ def createMammoth(N,k=30,seed=42):
 
     return np.array(mammoth_sample), colors
 
-def load_and_store_data_file(N,filename,filetype='.pkl'):
+
+def make_s_curve_with_hole(n_samples=4000, noise=0.05, random_state=42, hole_center=(0, 1, 0), hole_radius=0.5):
+    """Generate an S curve dataset with a hole.
+
+    Parameters
+    ----------
+    n_samples : int, default=100
+        The number of sample points on the S curve.
+
+    noise : float, default=0.0
+        The standard deviation of the gaussian noise.
+
+    random_state : int, RandomState instance or None, default=None
+        Determines random number generation for dataset creation.
+
+    hole_center : tuple of floats, default=(0, 1, 0)
+        The center of the hole in the 3D space.
+
+    hole_radius : float, default=0.5
+        The radius of the hole.
+
+    Returns
+    -------
+    X : ndarray of shape (n_samples, 3)
+        The points with a hole.
+
+    t : ndarray of shape (n_samples,)
+        The univariate position of the sample.
+    """
+    generator = check_random_state(random_state)
+
+    t = 3 * np.pi * (generator.uniform(size=(1, n_samples)) - 0.5)
+    X = np.empty(shape=(n_samples, 3), dtype=np.float64)
+    X[:, 0] = np.sin(t)
+    X[:, 1] = 2.0 * generator.uniform(size=n_samples)
+    X[:, 2] = np.sign(t) * (np.cos(t) - 1)
+    X += noise * generator.standard_normal(size=(3, n_samples)).T
+    t = np.squeeze(t)
+
+    # Define the hole
+    hole_center = np.array(hole_center)
+    distances_squared = np.sum((X - hole_center) ** 2, axis=1)
+
+    # Exclude points that fall within the hole
+    mask = distances_squared > hole_radius ** 2
+    X = X[mask]
+    t = t[mask]
+
+    return X, t
+
+
+###
+
+def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_dataset=False):
     # Check if the file already exists
     if not os.path.exists('Dataset_files/'+filename+filetype):
         print("\nDownloading '"+filename+"' data.")
-        ddata = datasets.fetch_openml(filename)
-        # Create the output directory if it doesn't exist
         os.makedirs('Dataset_files', exist_ok=True)
-
-        data = np.array(ddata['data'])
-        labels = np.array(ddata['target'])
+        if torch_dataset:
+            if filename=='cifar10':
+                trainset = torchvision.datasets.CIFAR10(root='./Dataset_files', train=True, download=True)
+            else:
+                raise("This dataset is not available")
+            data = np.array(trainset.data, dtype=np.float32)
+            data = data.reshape(data.shape[0],np.prod(data.shape[1:]))
+            data = data / data.max()
+            labels = np.array(trainset.targets)
+        else:
+            ddata = datasets.fetch_openml(filename)
+            # Create the output directory if it doesn't exist
+            data = np.array(ddata['data'])
+            labels = np.array(ddata['target'])
         # Save the dataset as a .pkl file
         with open('Dataset_files/'+filename+filetype, 'wb') as f:
             pickle.dump((data, labels), f)
@@ -130,16 +202,28 @@ def load_and_store_data_file(N,filename,filetype='.pkl'):
     print("Selecting subset of N = ",N)
     indices = random.sample(range(len(data)), N)
     data = np.array(data[indices],dtype=np.float32)
+    # normalize data:
+    if normalize:
+        data = data / np.max(data)
     labels = np.array(labels[indices],dtype=np.int64)
     return data,labels
 
 def load_MNIST(N):
-    return load_and_store_data_file(N,'mnist_784')
+    return load_and_store_data_file(N, 'mnist_784')
 
 def load_FashionMNIST(N):
-    return load_and_store_data_file(N,'fashion-mnist')
+    return load_and_store_data_file(N, 'fashion-mnist')
 
+def load_CIFAR_10(N):
+    return load_and_store_data_file(N, 'cifar10', torch_dataset=True)
 
+def load_heart_disease_dataset():
+    heart_disease_data = pd.read_csv('./Dataset_files/heart.csv')
+    X = heart_disease_data.iloc[:, :-1]
+    labels = heart_disease_data.iloc[:, -1]
+    scaler = StandardScaler()
+    data = scaler.fit_transform(X)
+    return data, labels
 
 ### Plotting data
 
@@ -158,7 +242,7 @@ def plot_MNIST_samples(images, labels, num_samples=10):
     plt.tight_layout()  # Adjust the padding between and around the subplots
     plt.show()
 
-def plot_data(data,labels,title='Data',save=True,display=False):
+def plot_data(data,labels,title='Data',save=True,display=False,axis=False):
     if data.shape[0]==labels.shape[0]:
         fig = plt.figure(figsize=(12, 12))
         plt.title(title)
@@ -167,19 +251,22 @@ def plot_data(data,labels,title='Data',save=True,display=False):
             plt.scatter(data[:,0],data[:,1],s=3,c=labels, cmap="jet")
             # plt.colorbar()
             plt.gca().set_aspect('equal', adjustable='datalim')
-            plt.axis('off')
+            if not axis:
+                plt.axis('off')
         elif dim==3:
             ax = fig.add_subplot(111, projection="3d")
             ax.scatter(data[:,0],data[:,1],data[:,2],s=3,c=labels, cmap="jet")
             ax.view_init(20, -20)
         else:
-            raise("Invalid dimension for plot")
-        if save:
+            print("Invalid dimension for plot")
+        if save and (dim==2 or dim==3):
             # Create the output directory if it doesn't exist
             os.makedirs('Results', exist_ok=True)
             plt.savefig('./Results/'+title+'.png')
         if display:
             plt.show()
+        else:
+            plt.close()
 
 def saveTotalLossPlots(total_losses,N,title='Loss per epoch'):
     # Plot total loss
@@ -194,6 +281,7 @@ def saveTotalLossPlots(total_losses,N,title='Loss per epoch'):
     if not os.path.exists(loss_graph_path):
         os.makedirs(loss_graph_path)
     plt.savefig(loss_graph_path+str(N)+title+'.png')
+    plt.close()
 
 
 ### other helper functions

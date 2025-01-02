@@ -1,6 +1,7 @@
 import numpy as np
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, lil_matrix
 from scipy.sparse.csgraph import dijkstra
+import scipy.special as s
 from sklearn.neighbors import NearestNeighbors
 from time import time
 import pickle
@@ -9,14 +10,12 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 from dimensionReductionSchemes import reduce_dim
 from data_and_plots import printtime
-import torch
 import warnings
 
-eps = np.finfo(np.float32).tiny
-
 IMPLEMENTED_PHIS = ['exp','half_normal','log_normal','pareto','uniform']
+
 def dijkstra_wrapper(graph, i):
-    return dijkstra(csgraph=graph, indices=i)
+    return dijkstra(csgraph=graph, indices=i, directed=False, return_predecessors=False)
 
 @njit(parallel=True)
 def find_nn_DistMatrix(M, k:int):
@@ -93,10 +92,9 @@ def normalization(distances, normalize:bool, distBeyondNN:bool):
                 distances[i] = distances[i] / mdi
     elif distBeyondNN == True and normalize == False:
         for i in prange(distances.shape[0]):
-
             #it might be possible to simplify the computations below if distances are already ordered
             ind_m1, m2 = two_smallest(distances[i])
-            distances[i] = distances[i] - m2+eps
+            distances[i] = distances[i] - m2
             distances[i][ind_m1] = 0.0
     elif distBeyondNN == False and normalize == True:
         for i in prange(distances.shape[0]):
@@ -105,87 +103,85 @@ def normalization(distances, normalize:bool, distBeyondNN:bool):
                 distances[i] = distances[i] / mdi
     return distances
 
-@njit(parallel=True)
-def compR(knn_inds, distance):
-    r'''
-    Constructs a full $n\times n$ distance matrix from $(n,k)$ nearest neighbor distances, where non-neighbor entries
-    are filled with $0$.
+@njit
+def euclidean_dist(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k):
+    p0 = data[i]
+    p1 = data[j]
+    p2 = data[k]
 
-    :param knn_inds: np.ndarray(n,k) - indices of k-nearest neighbors
-    :param distance: np.ndarray(n,k) - ditances to k-nearest neighbors
-    :return R: np.ndarray(n,n) - distance matrix filled with zero for non-neighbors
-    '''
+    v1 = p1-p0
+    v2 = p2-p0
+    v1 = v1 / np.linalg.norm(v1)
+    v2 = v2 / np.linalg.norm(v2)
+    p1n = p0 + v1 * knn_distances[i][ind_j]
+    p2n = p0 + v2 * knn_distances[i][ind_k]
+
+    d = np.sqrt(np.sum(np.square(p1n-p2n)))
+    return d
+
+@njit
+def canonical_dist(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k):
+    return knn_distances[i][ind_j]+knn_distances[i][ind_k]
+
+@njit
+def freedman_dist(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k):
+    d = (knn_distances[i][ind_j]+knn_distances[i][ind_k])/np.sqrt(2)
+    return d
+
+def comp_graph(knn_inds, knn_distances, data, f):
     N = knn_inds.shape[0]
-    R = np.zeros((N, N))
-    for i in prange(N):
-        R[i, knn_inds[i]] = distance[i]
+    R = {} # R is a dictionary and R[(i,j,k)] contains the distance from point j to k in neighborhood i. Non-symmetrized. R is sparse in the sense that it does not contain distances that are infinite or when j==k
+    for i in range(N):
+        for ind_j,j in enumerate(knn_inds[i]):
+            for ind_k,k in enumerate(knn_inds[i]):
+                if j<k:
+                    if j==i:
+                        R[(i,j,k)] = knn_distances[i][ind_k]
+                    elif k==i:
+                        R[(i,j,k)] = knn_distances[i][ind_j]
+                    else:
+                        R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
-def compDataD(knn_inds,R,N,tconorm="canonical",phi = None,phi_inv=None):
-    r'''
-    Symmetrizes a $(n,n)$ (sparse) matrix of nearest neighbor distances. The input matrix $R$ is assumed to contain
-    non-zero entries only at nearest neighbor positions. We symmetrize by taking 
-    a t-conorm T(a,b), where a is an element of R and b is an element or R.transpose()
-    
-    For the canonical t-conorm, this simplifies to the minimum whenever that is valid (if one of the distances is zero and does not correspond to a nearest neighbor, it is ignored)
+def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv):
+    if tconorm == "probabilistic sum":
+        def T_conorm(a,b):
+            return a+b-a*b
+    elif tconorm == "bounded sum":
+        def T_conorm(a,b):
+            return min(a+b,1)
+    elif tconorm == "drastic sum":
+        def T_conorm(a,b):
+            if a==0:
+                return b
+            elif b==0:
+                return a
+            else:
+                return 1
+    elif tconorm == "Einstein sum":
+        def T_conorm(a,b):
+            return (a+b)/(1+a*b)
+    elif tconorm == "nilpotent maximum":
+        def T_conorm(a,b):
+            if a+b < 1:
+                return max(a,b)
+            else:
+                return 1
+    # feel free to add your favourite t-conorm here
+    else: # canonical max-t-conorm
+        def T_conorm(a,b):
+            return max(a,b)
 
-    :param knn_inds: np.ndarray (n,k) - indices of nearest neighbors
-    :param R: np.ndarray (n,n) - matrix with nearest neighbor distances filled by zeros elswhere
-    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
-    :return data_D: np.ndarray (n,n) - distance matrix
-    '''
+    g = lil_matrix((N,N))
 
-    if phi is None:
-        phi = lambda x: torch.exp(-x)
-        phi_inv = lambda x: -torch.log(x)
-    if tconorm != "canonical":
-        R = torch.from_numpy(R)
-        R[R != 0] = phi(R[R != 0])
-        RT = R.t()
+    for key, value in graph.items():
+        g[key[1],key[2]] = T_conorm(phi(value),g[key[1],key[2]])
 
-        if tconorm == "probabilistic sum":
-            data_D = R + RT - R * RT
-        elif tconorm == "bounded sum":
-            data_D = torch.minimum(R+RT,torch.ones_like(R))
-        elif tconorm == "drastic sum":
-            data_D = torch.zeros_like(R)
-            data_D[(R != 0) & (RT == 0)] = R[(R != 0) & (RT == 0)]
-            data_D[(R == 0) & (RT != 0)] = RT[(R == 0) & (RT != 0)]
-            data_D[(R != 0) & (RT != 0)] = 1
-        elif tconorm == "Einstein sum":
-            data_D = (R+RT)/(1+R*RT)
-        elif tconorm == "nilpotent maximum":
-            data_D = torch.zeros_like(R)
-            whereSumLowerOne = (R+RT<1)
-            data_D[whereSumLowerOne] = torch.maximum(R[whereSumLowerOne],RT[whereSumLowerOne])
-            data_D[~whereSumLowerOne] = torch.ones_like(R)[~whereSumLowerOne]
-        else: # alternative implementation of canonical max-t-conorm
-            data_D = torch.maximum(R,RT)
-        # feel free to add your favourite t-conorm here
+    for i, (row_indices, row_data) in enumerate(zip(g.rows, g.data)): 
+        for j, value in zip(row_indices, row_data):
+            g[i, j] = phi_inv(value) + np.nextafter(0., np.float32(1.)) # np.nextafter(0., np.float32(1.)) adds the smallest possible floating point number, which is necessary for scipy's Dijkstra-routine, which treats exact 0's like Infinity (because it uses sparse matrices)
 
-        data_D[data_D!=0] = phi_inv(data_D[data_D!=0])
-        data_D = data_D.numpy()
-        return data_D
-    else: # the canonical (max) - t-conorm can be handled in a way that ensures that we spend at most Nxk operations:
-        @njit(parallel=True) # use numba for parallelization
-        def maxDataD(knn_inds,R,N):
-            N = knn_inds.shape[0]
-            data_D = np.zeros((N, N))
-
-            for i in prange(N):
-                for j in knn_inds[i]:
-                    Rij = R[i, j]
-                    RTij = R[j, i]
-
-                    # we know that j is in the k-nns, so we check only if RTij is nonzero - if Rij is zero this means it is the nearest neighbor due to the normalization
-                    if RTij != 0:
-                        r = np.minimum(Rij, RTij)
-                    else:
-                        r = Rij
-                    data_D[i, j] = r
-                    data_D[j, i] = r
-            return data_D
-        return maxDataD(knn_inds,R,N)
+    return g.tocsr()
 
 @njit
 def extractSubmatrices(D):
@@ -252,7 +248,7 @@ def compute_mean_points_and_labels(nc, data, SM):
     clusterLabels = np.concatenate(clusterLabels)
     return meanPointsOfClusters, clusterLabels
 
-def subMatrixEmbeddings(nc, SM, meanPointEmbeddings,**reduce_dim_kwargs):
+def subMatrixEmbeddings(nc, SM, meanPointEmbeddings, **reduce_dim_kwargs):
 
     '''
     applys function reduce_dim to a list of submatrices, corresponding to connected components
@@ -264,13 +260,18 @@ def subMatrixEmbeddings(nc, SM, meanPointEmbeddings,**reduce_dim_kwargs):
     :param reduce_dim_kwargs: arguments for reduce_dim function
     :return:
     '''
-    subMatrixEmbeddings = []
+    submatrixEmbeddings = []
+    submatrixInitEmbeddings = []
     for i in range(nc):
-        subMatrixEmbeddings.append(
-            reduce_dim(SM[i][0],**reduce_dim_kwargs ))
-        subMatrixEmbeddings[i] += meanPointEmbeddings[
-            i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixEmbeddings[i]-matrix
-    return subMatrixEmbeddings
+        subMatrixInitEmb, subMatrixEmb = reduce_dim(SM[i][0], **reduce_dim_kwargs)
+
+        submatrixInitEmbeddings.append(subMatrixInitEmb)
+        submatrixEmbeddings.append(subMatrixEmb)
+
+        submatrixInitEmbeddings[i] += meanPointEmbeddings[i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixInitEmbeddings[i]-matrix
+        submatrixEmbeddings[i] += meanPointEmbeddings[i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixEmbeddings[i]-matrix
+        
+    return submatrixInitEmbeddings, submatrixEmbeddings
 
 
 def isumap(data,
@@ -278,21 +279,20 @@ def isumap(data,
            d: int,
            normalize:bool = True,
            distBeyondNN:bool = True,
-           verbose: bool=True,
-           dataIsDistMatrix: bool=False,
+           verbose: bool = True,
+           dataIsDistMatrix: bool = False,
            dataIsGeodesicDistMatrix: bool = False,
            saveDistMatrix: bool = False,
-           labels : bool=None,
-           initialization="cMDS",
-           metricMDS : bool =True,
-           sgd_n_epochs:int= 1000,
-           sgd_lr: float=1e-2,
+           initialization = "cMDS",
+           metricMDS : bool = True,
+           sgd_n_epochs:int = 1000,
+           sgd_lr: float = 1e-2,
            sgd_batch_size = None,
            sgd_max_epochs_no_improvement: int = 100,
            sgd_loss = 'MSE',
-           sgd_saveplots_of_initializations:bool=True,
-           sgd_saveloss: bool=False,
+           sgd_saveloss: bool = False,
            tconorm = "canonical",
+           distFun = "euc",
            phi = None,
            phi_inv = None,
            **phi_params):
@@ -319,7 +319,6 @@ def isumap(data,
     :param dataIsDistMatrix: bool - whether data is a distance matrix, if False, distance is computed from data
     :param dataIsGeodesicDistMatrix: bool - whether data is geodesic distance matrix, if False, dijkstra is applied
     :param saveDistMatrix:  bool -whether to save distance matrix
-    :param labels: cluster labels for plotting
     :param initialization: initialization for dimensionality reduction
     :param metricMDS: bool - if True, metricMDS is used for dimensionality reduction
     :param sgd_n_epochs: int - number of epochs for SGD, only used if metricMDS = True
@@ -327,17 +326,16 @@ def isumap(data,
     :param sgd_batch_size: int - batch size for SGD, only used if metricMDS=True
     :param sgd_max_epochs_no_improvement: int - number of epochs until early stopping, only used if metricMDS = True
     :param sgd_loss: loss for SGD (one of ['MSE','Sammon'] or custom loss)
-    :param sgd_saveplots_of_initializations: bool - whether to save plots of SGD initialization
     :param sgd_saveloss:  bool - whether to save plots of SGD loss
     :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
     :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
     If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
     Does not do anything if t-conorm is 'canonical'.
-    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inveres of phi.
+    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
     :param **phi_params**: additional parameters to pass to the phi function.
-    :return finalEmbedding: np.ndarray (n,d) - points in low dimension
-    :return clusterLabels: labels of connected components
-
+    :return finalInitEmbedding: np.ndarray (n,d) - initial low dimensional embedding before the application of metric MDS 
+    :return finalEmbedding: np.ndarray (n,d) - low dimensional embedding. If metricMDS = False, then finalEmbedding==finalInitEmbedding.
+    :return clusterLabels: labels of connected components of the distance matrix
 
     ...............................................
 
@@ -351,8 +349,6 @@ def isumap(data,
 
     if (phi is not None) and (tconorm=='canonical'):
         warnings.warn('When using the canonical t-conorm, phi is irrelevant. If you intended to use a different phi, use one of the other t-conorms')
-
-
 
     if ((callable(phi) and (not callable(phi_inv)))) or ((callable(phi_inv) and (not callable(phi)))):
 
@@ -368,32 +364,32 @@ def isumap(data,
         if phi == 'exp':
 
             scale = phi_params.get('scale',1.0)
-            phi = lambda x: torch.exp(-x/scale)
-            phi_inv = lambda x: -torch.log(x)*scale
+            phi = lambda x: np.exp(-x/scale)
+            phi_inv = lambda x: -np.log(x)*scale
 
 
         elif phi =='half_normal':
 
             scale = phi_params.get('scale',1.0)
-            sqrt2 = torch.sqrt(torch.tensor(2.0))
-            phi = lambda x: 1.0-torch.erf(x/(sqrt2*scale))
-            phi_inv = lambda x: sqrt2*scale*torch.erfinv(1.0-x)
+            sqrt2 = np.sqrt(2.0)
+            phi = lambda x: 1.0-s.erf(x/(sqrt2*scale))
+            phi_inv = lambda x: sqrt2*scale*s.erfinv(1.0-x)
 
 
         elif phi =='log_normal':
             scale = phi_params.get('scale', 1.0)
-            sqrt2 = torch.sqrt(torch.tensor(2.0))
+            sqrt2 = np.sqrt(2.0)
 
-            phi = lambda x: 1.0- (1.0 + torch.erf(torch.log(x)/(sqrt2*scale)))/2.0
-            phi_inv = lambda x: torch.exp(sqrt2*scale*torch.erfinv(1.0-2*x))
+            phi = lambda x: 1.0- (1.0 + s.erf(np.log(x)/(sqrt2*scale)))/2.0
+            phi_inv = lambda x: np.exp(sqrt2*scale*s.erfinv(1.0-2*x))
 
         elif phi=='pareto':
 
             scale = phi_params.get('scale',1.0)
             shape = phi_params.get('shape',2.0)
 
-            phi = lambda x: torch.exp(-shape*torch.log1p(x / scale))
-            phi_inv = lambda x: scale*(torch.exp(-torch.log1p(x-1.0) / shape)-1.0)
+            phi = lambda x: np.exp(-shape*s.log1p(x / scale))
+            phi_inv = lambda x: scale*(np.exp(-s.log1p(x-1.0) / shape)-1.0)
    
         elif phi =='uniform':
 
@@ -407,19 +403,19 @@ def isumap(data,
             phi = lambda x: x/scale
 
             phi_inv = lambda x: scale*x
+    elif phi is None:
+        scale = phi_params.get('scale',1.0)
+        phi = lambda x: np.exp(-x/scale)
+        phi_inv = lambda x: -np.log(x)*scale
 
-
-
-
-        
         
     if verbose:
         print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
 
-    if dataIsGeodesicDistMatrix == False:
+    if not dataIsGeodesicDistMatrix:
         t0 = time()
-        if dataIsDistMatrix == True:
+        if dataIsDistMatrix:
             print("Using precomputed distance matrix")
             knn_inds, knn_distances = find_nn_DistMatrix(data,k)
         else:
@@ -435,20 +431,30 @@ def isumap(data,
             printtime("Normalization computed in",t1-t0)
 
         t0=time()
-        R = compR(knn_inds,distance)
-        data_D = compDataD(knn_inds, R, N, tconorm = tconorm,phi=phi,phi_inv=phi_inv)
-        t1 = time()
         if verbose:
-            printtime("Neighbourhoods merged in",t1-t0)
+            print("Computing the graph...")
+        if distFun == "freed":
+            neighborhood_dist_function = freedman_dist
+        elif distFun == "canonical":
+            neighborhood_dist_function = canonical_dist
+        else:
+            neighborhood_dist_function = euclidean_dist
+        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function)
+
+        if verbose:
+            print("Applying t-conorm...")
+        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv)
         
-        print("\nRunning Dijkstra...")
+        if verbose:
+            print("\nRunning Dijkstra...")
         t0 = time()
-        graph = csr_matrix(data_D)
         partial_func = partial(dijkstra_wrapper, graph)
         D = []
         if __name__ == 'isumap':
             with Pool() as p:
                 D = p.map(partial_func, range(N))
+                p.close()
+                p.join()
         D = np.array(D)
         t1 = time()
         if verbose:
@@ -490,25 +496,22 @@ def isumap(data,
             printtime("Euclidean distances",t1-t0)
         
         t0 = time()
-        meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size,max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", labels=labels, saveplots_of_initializations=False, metricMDS=False, saveloss=False, verbose=verbose, tconorm=tconorm)
+        _, meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size, max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", metricMDS=False, saveloss=False, verbose=verbose)
         t1 = time()
         if verbose:
             printtime("Embedded the cluster mean points in",t1-t0)
     
-    print("\nReducing dimension...")
-
-
+    if verbose:
+        print("\nReducing dimension...")
     t0 = time()
-    submatrixembeddings = subMatrixEmbeddings(nc, SM, meanPointEmbeddings,d=d, n_epochs=sgd_n_epochs, lr=sgd_lr, batch_size=sgd_batch_size,
-                       max_epochs_no_improvement=sgd_max_epochs_no_improvement, loss=sgd_loss,
-                       initialization=initialization, labels=labels,
-                       saveplots_of_initializations=sgd_saveplots_of_initializations, metricMDS=metricMDS,
-                       saveloss=sgd_saveloss, verbose=verbose, tconorm=tconorm)
+    submatrixInitEmbeddings, submatrixEmbeddings = subMatrixEmbeddings(nc, SM, meanPointEmbeddings, d=d, n_epochs=sgd_n_epochs, lr=sgd_lr, batch_size=sgd_batch_size, max_epochs_no_improvement=sgd_max_epochs_no_improvement, loss=sgd_loss, initialization=initialization, metricMDS=metricMDS, saveloss=sgd_saveloss, verbose=verbose)
+
     t1 = time()
     if verbose:
         printtime("Computed submatrix embeddings in",t1-t0)
     
-    finalEmbedding = np.concatenate(submatrixembeddings)
+    finalInitEmbedding = np.concatenate(submatrixInitEmbeddings)
+    finalEmbedding = np.concatenate(submatrixEmbeddings)
     
-    return  finalEmbedding, clusterLabels
+    return  finalInitEmbedding, finalEmbedding, clusterLabels
 
