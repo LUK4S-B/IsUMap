@@ -128,7 +128,7 @@ def freedman_dist(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k):
     d = (knn_distances[i][ind_j]+knn_distances[i][ind_k])/np.sqrt(2)
     return d
 
-def comp_graph(knn_inds, knn_distances, data, f):
+def comp_graph(knn_inds, knn_distances, data, f, epm):
     N = knn_inds.shape[0]
     R = {} # R is a dictionary and R[(i,j,k)] contains the distance from point j to k in neighborhood i. Non-symmetrized. R is sparse in the sense that it does not contain distances that are infinite or when j==k
     for i in range(N):
@@ -140,7 +140,8 @@ def comp_graph(knn_inds, knn_distances, data, f):
                     elif k==i:
                         R[(i,j,k)] = knn_distances[i][ind_j]
                     else:
-                        R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
+                        if not epm:
+                            R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
 def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv):
@@ -295,6 +296,7 @@ def isumap(data,
            distFun = "euc",
            phi = None,
            phi_inv = None,
+           epm=False,
            **phi_params):
 
     '''
@@ -332,6 +334,7 @@ def isumap(data,
     If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
     Does not do anything if t-conorm is 'canonical'.
     :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
+    :param epm: If this parameter is set to True, then all non-radial distances in the star graph are set to Infinity as if we were in the category EPMet. Default is False.
     :param **phi_params**: additional parameters to pass to the phi function.
     :return finalInitEmbedding: np.ndarray (n,d) - initial low dimensional embedding before the application of metric MDS 
     :return finalEmbedding: np.ndarray (n,d) - low dimensional embedding. If metricMDS = False, then finalEmbedding==finalInitEmbedding.
@@ -439,7 +442,7 @@ def isumap(data,
             neighborhood_dist_function = canonical_dist
         else:
             neighborhood_dist_function = euclidean_dist
-        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function)
+        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function, epm)
 
         if verbose:
             print("Applying t-conorm...")
