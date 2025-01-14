@@ -147,7 +147,7 @@ def comp_graph(knn_inds, knn_distances, data, f, epm):
 def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv):
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
-            return a+b-a*b
+            return np.exp(np.log(1.0-a)+ np.log(1.0-b))
     elif tconorm == "bounded sum":
         def T_conorm(a,b):
             return min(a+b,1)
