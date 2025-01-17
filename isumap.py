@@ -147,7 +147,10 @@ def comp_graph(knn_inds, knn_distances, data, f, epm):
 def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv):
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
-            return np.exp(np.log(1.0-a)+ np.log(1.0-b))
+            if (a == 1.0) or (b == 1.0):
+                return 1.0
+            else:
+                return np.exp(np.log(1.0-a)+ np.log(1.0-b))
     elif tconorm == "bounded sum":
         def T_conorm(a,b):
             return min(a+b,1)
@@ -403,9 +406,9 @@ def isumap(data,
                 scale = 1.0
 
 
-            phi = lambda x: x/scale
+            phi = lambda x: 1.0 - min(x/scale,1.0)
 
-            phi_inv = lambda x: scale*x
+            phi_inv = lambda x: (1.0-min(x,1.0))*scale
     elif phi is None:
         scale = phi_params.get('scale',1.0)
         phi = lambda x: np.exp(-x/scale)
