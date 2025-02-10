@@ -144,7 +144,8 @@ def comp_graph(knn_inds, knn_distances, data, f, epm):
                             R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
-def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv):
+def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv,m_scheme_value = None):
+    m_scheme_value = 0.0 if m_scheme_value is None else phi(m_scheme_value)
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
             if (a == 1.0) or (b == 1.0):
@@ -171,7 +172,14 @@ def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv):
                 return max(a,b)
             else:
                 return 1
+
+    # Note that this reduces to the canonical t-conorm if m_scheme_value is not specified
+    elif tconorm == "m_scheme":
+        def T_conorm(a,b): return max(a,b,m_scheme_value)
+
+
     # feel free to add your favourite t-conorm here
+
     else: # canonical max-t-conorm
         def T_conorm(a,b):
             return max(a,b)
@@ -300,6 +308,7 @@ def isumap(data,
            phi = None,
            phi_inv = None,
            epm=False,
+           m_scheme_value=None,
            **phi_params):
 
     '''
@@ -449,7 +458,7 @@ def isumap(data,
 
         if verbose:
             print("Applying t-conorm...")
-        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv)
+        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv,m_scheme_value)
         
         if verbose:
             print("\nRunning Dijkstra...")
