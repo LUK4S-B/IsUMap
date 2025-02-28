@@ -92,6 +92,18 @@ def createTorus(N,seed=0):
 def createSwissRole(N,hole=True,seed=0):
     return datasets.make_swiss_roll(n_samples=N, hole = hole, noise=0.0 , random_state=seed)
 
+
+def create_nonuniform_Mobius(n_samples, width=1):
+	rng = np.random.default_rng(seed=0)
+	u = rng.uniform(0, 2 * np.pi, size=n_samples) 
+	v = rng.beta(1, 2, size=n_samples) * width * 2 - width 
+	color = u
+	x = (1 + v * np.cos(u / 2)) * np.cos(u)
+	y = (1 + v * np.cos(u / 2)) * np.sin(u)
+	z = v * np.sin(u / 2)
+	return np.array([x, y, z]).T, color
+	
+
 def createBreastCancerDataset():
     data = pd.read_csv('Dataset_files/BreastCancerDataset.csv')
     data = data.drop('id',axis=1)

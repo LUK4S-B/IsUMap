@@ -35,3 +35,4 @@ if __name__ == '__main__':
         
         printtime("Isumap total time",t1-t0)
     
+# possible sets in order of importance: torus, swiss-role-with-hole, möbius, s-shape, breastcancer, heart disease
