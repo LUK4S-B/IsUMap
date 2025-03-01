@@ -104,8 +104,8 @@ def create_nonuniform_Mobius(n_samples, width=1):
 	return np.array([x, y, z]).T, color
 	
 
-def createBreastCancerDataset():
-    data = pd.read_csv('Dataset_files/BreastCancerDataset.csv')
+def createBreastCancerDataset(path='Dataset_files/BreastCancerDataset.csv'):
+    data = pd.read_csv(path)
     data = data.drop('id',axis=1)
     data=data.drop('Unnamed: 32',axis=1)
     data['diagnosis'] = data['diagnosis'].map({'M':1,'B':0})

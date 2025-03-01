@@ -188,14 +188,18 @@ def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv,m_scheme_value = None
             return max(- np.log(np.exp(-m_scheme_value*a) + np.exp(-m_scheme_value*b)) / m_scheme_value , 0)
     elif tconorm == "m_scheme_Composition":
         def T_conorm(a,b): 
-            return - np.log(np.exp(-m_scheme_value*a) + np.exp(-m_scheme_value*b) - np.exp(-m_scheme_value*(a+b))) / m_scheme_value
+            return max(- np.log(np.exp(-m_scheme_value*a) + np.exp(-m_scheme_value*b) - np.exp(-m_scheme_value*(a+b))) / m_scheme_value, 0) # here max(..., 0) is inserted for numerical stability. Finite numerical precision can lead to np.exp(-m_scheme_value*a) + np.exp(-m_scheme_value*b) - np.exp(-m_scheme_value*(a+b)) bigger 1.
     elif tconorm == "m_scheme_Hyperbolic":
         def T_conorm(a,b):
-            if a==0 and b==0:
-                return 0
+            if a == np.inf and b == np.inf:
+                return np.inf
+            elif a == np.inf or b == np.inf:
+                return 1.0
+            elif a == 0 and b == 0:
+                return 0.0
             else:
                 return a*b / (a+b)
-        
+
     # feel free to add your favourite t-conorm here
 
     else: # canonical max-t-conorm
@@ -209,9 +213,8 @@ def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv,m_scheme_value = None
             if g[key[1],key[2]] == 0:
                 g[key[1],key[2]] = np.inf  # this is necessary because we use sparse matrices that can not be initialized with inf-values. However, all values that remain entirely 0 are treated as if they were inf by Dijkstra later. Hence, this operation only has to be performed for the case in which some-non-infinite value exists at that key in the graph dictionary
         g[key[1],key[2]] = T_conorm(phi(value),g[key[1],key[2]])
-        # if tconorm.startswith("m_scheme"):
-        #     if g[key[1],key[2]] == np.inf:
-        #         g[key[1],key[2]] = 0  # increase sparsity if possible
+        if np.isnan(g[key[1],key[2]]):
+            raise ValueError("Error: g[key[1],key[2]] is NaN. Perhaps division by 0 or inf occured in some t-conorm or m-scheme.")
 
     for i, (row_indices, row_data) in enumerate(zip(g.rows, g.data)): 
         for j, value in zip(row_indices, row_data):
@@ -328,7 +331,7 @@ def isumap(data,
            sgd_loss = 'MSE',
            sgd_saveloss: bool = False,
            tconorm = "canonical",
-           distFun = "euc",
+           distFun = "canonical",
            phi = None,
            phi_inv = None,
            epm = True,
@@ -390,6 +393,9 @@ def isumap(data,
             warnings.warn("When using m_schemes, phi must equal the identity. The specified phi is not going to have any effect. Use other tconorms instead if you want to make use of phi.")
         phi = 'identity'
 
+    if m_scheme_value <= 0:
+        raise ValueError("Error: m_scheme_value should be >= 0.")
+
     if (phi is not None) and (tconorm=='canonical'):
         warnings.warn('When using the canonical t-conorm, phi is irrelevant. If you intended to use a different phi, use one of the other t-conorms')
 
@@ -421,16 +427,15 @@ def isumap(data,
             phi = lambda x: 1.0- (1.0 + s.erf(np.log(x)/(sqrt2*scale)))/2.0
             phi_inv = lambda x: np.exp(sqrt2*scale*s.erfinv(1.0-2*x))
 
-        elif phi=='pareto':
+        elif phi == 'pareto':
             scale = phi_params.get('scale',1.0)
             shape = phi_params.get('shape',2.0)
             phi = lambda x: np.exp(-shape*s.log1p(x / scale))
             phi_inv = lambda x: scale*(np.exp(-s.log1p(x-1.0) / shape)-1.0)
 
-        elif phi =='uniform':
+        elif phi == 'uniform':
             if normalize == False:
                 scale = data.max()
-
             else:
                 scale = 1.0
             phi = lambda x: 1.0 - min(x/scale,1.0)
