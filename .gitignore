@@ -2,3 +2,7 @@
 **/__pycache__
 **/*.DS_Store
 **/TestFiles
+**/Results
+**/Loss_graphs
+**/Simulations/Experiments_ATMP/Dataset_files/
+Dataset_files/mnist_784.pkl

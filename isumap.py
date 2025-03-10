@@ -144,14 +144,15 @@ def comp_graph(knn_inds, knn_distances, data, f, epm):
                             R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
-def apply_t_conorm_recursively(graph,tconorm,N,phi,phi_inv,m_scheme_value = None):
-    m_scheme_value = 1.0 if m_scheme_value is None else phi(m_scheme_value)
+def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0):
+    m_scheme_value = phi(m_scheme_value)
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
-            if (a == 1.0) or (b == 1.0):
-                return 1.0
-            else:
-                return np.exp(np.log(1.0-a)+ np.log(1.0-b))
+            return a+b-a*b
+            # if (a == 1.0) or (b == 1.0):
+            #     return 1.0
+            # else:
+            #     return 1.0 - np.exp(np.log(1.0-a) + np.log(1.0-b)) # equals a+b-ab but is more numerically stable when ab is very small.
     elif tconorm == "bounded sum":
         def T_conorm(a,b):
             return min(a+b,1)
@@ -335,7 +336,9 @@ def isumap(data,
            phi = None,
            phi_inv = None,
            epm = True,
-           m_scheme_value = None,
+           m_scheme_value = 1.0,
+           apply_Dijkstra = True,
+           extractSubgraphs = True,
            **phi_params):
 
     '''
@@ -394,7 +397,7 @@ def isumap(data,
         phi = 'identity'
 
     if m_scheme_value <= 0:
-        raise ValueError("Error: m_scheme_value should be >= 0.")
+        raise ValueError("Error: m_scheme_value should be > 0.")
 
     if (phi is not None) and (tconorm=='canonical'):
         warnings.warn('When using the canonical t-conorm, phi is irrelevant. If you intended to use a different phi, use one of the other t-conorms')
@@ -484,19 +487,24 @@ def isumap(data,
 
         if verbose:
             print("Applying t-conorm...")
-        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv,m_scheme_value)
+        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value)
         
-        if verbose:
-            print("\nRunning Dijkstra...")
-        t0 = time()
-        partial_func = partial(dijkstra_wrapper, graph)
-        D = []
-        if __name__ == 'isumap':
-            with Pool() as p:
-                D = p.map(partial_func, range(N))
-                p.close()
-                p.join()
-        D = np.array(D)
+        if apply_Dijkstra:
+            if verbose:
+                print("\nRunning Dijkstra...")
+            t0 = time()
+            partial_func = partial(dijkstra_wrapper, graph)
+            D = []
+            if __name__ == 'isumap':
+                with Pool() as p:
+                    D = p.map(partial_func, range(N))
+                    p.close()
+                    p.join()
+            D = np.array(D)
+        else:
+            D = graph.toarray()
+            D[D==0] = np.inf
+            np.fill_diagonal(D, 0)
         t1 = time()
         if verbose:
             printtime("Dijkstra",t1-t0)
@@ -512,7 +520,11 @@ def isumap(data,
         D = data
 
     t0 = time()
-    SM = extractSubmatrices(D)
+    if extractSubgraphs:
+        SM = extractSubmatrices(D)
+    else:
+        S = np.array([i for i in range(N)])
+        SM = [(D, S)]
     t1 = time()
     if verbose:
         printtime("Extracted connected components in",t1-t0)

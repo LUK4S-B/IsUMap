@@ -48,6 +48,18 @@ class SammonLoss(nn.modules.loss._Loss):
         y = torch.sqrt(target[notnull])
         return nn.functional.mse_loss(x, y, reduction=self.reduction)
 
+def sammon2(input, target, eps=1e-10):
+    r = (input - target)**2
+    r = r / (target + eps)
+    r = torch.sum(r)
+    r = r / torch.sum(target)
+    return r
+
+def ratio_loss(input, target, eps=1e-10):
+    r = input / (target + eps)
+    r = (r-1)**2
+    return torch.sum(r)
+
 def sgd_mds(D,initialData,
             n_epochs:int = 1000,
             lr:float=1e-2,
@@ -55,7 +67,8 @@ def sgd_mds(D,initialData,
             max_epochs_no_improvement = 100,
             loss = 'MSE',
             saveloss:bool=False, 
-            verbose=True):
+            verbose=True,
+            min_epochs:int = 100):
 
     r'''
 
@@ -88,6 +101,7 @@ def sgd_mds(D,initialData,
     
     dataDtype = initialData.dtype
     init = convert_to_torch_float32(initialData)
+    init[torch.isnan(init)] = torch.rand(torch.isnan(init).sum()) # replace nan values if any by random numbers
     D = convert_to_torch_float32(D)
 
 
@@ -101,6 +115,10 @@ def sgd_mds(D,initialData,
         loss_fn = nn.MSELoss()
     elif loss =='Sammon':
         loss_fn = SammonLoss()
+    elif loss == "Sammon2":
+        loss_fn = sammon2
+    elif loss == 'ratio':
+        loss_fn = ratio_loss
     elif isinstance(loss,nn.modules.loss._Loss):
         loss_fn = loss
     else:
@@ -142,7 +160,7 @@ def sgd_mds(D,initialData,
         else:
             epochs_no_improve += 1
 
-        if epochs_no_improve ==max_epochs_no_improvement:
+        if epochs_no_improve == max_epochs_no_improvement and epoch >= min_epochs:
             if verbose:
                 print(f'Convergence. Early stopping at epoch {epoch}!')
             break

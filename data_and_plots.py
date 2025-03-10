@@ -254,14 +254,15 @@ def plot_MNIST_samples(images, labels, num_samples=10):
     plt.tight_layout()  # Adjust the padding between and around the subplots
     plt.show()
 
-def plot_data(data,labels,title='Data',save=True,display=False,axis=False):
+def plot_data(data,labels,title='Data',save=True,display=False,axis=False, colorbar=False):
     if data.shape[0]==labels.shape[0]:
         fig = plt.figure(figsize=(12, 12))
         plt.title(title)
         dim = data.shape[1]
         if dim==2:
-            plt.scatter(data[:,0],data[:,1],s=3,c=labels, cmap="jet")
-            # plt.colorbar()
+            plt.scatter(data[:,0],data[:,1],s=3, c=labels, cmap="jet")
+            if colorbar:
+                plt.colorbar()
             plt.gca().set_aspect('equal', adjustable='datalim')
             if not axis:
                 plt.axis('off')
