@@ -2,7 +2,7 @@ import os
 import sys
 
 # Set the path to the directory containing `isumap.py`
-PATH_CURRENT = "../"  # Adjust this path as needed
+PATH_CURRENT = "../../src/"  # Adjust this path as needed
 
 scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
@@ -19,9 +19,9 @@ from isumap import isumap
 import umap
 
 
-save_dir_isomap = './../MNIST_isomap_csv'
-save_dir_umap =  './../MNIST_umap_csv'
-save_dir_isumap = './../MNIST_isumap_csv'
+save_dir_isomap = './../results/MNIST_isomap_csv'
+save_dir_umap =  './../results/MNIST_umap_csv'
+save_dir_isumap = './../results/MNIST_isumap_csv'
 
 
 # MNIST
