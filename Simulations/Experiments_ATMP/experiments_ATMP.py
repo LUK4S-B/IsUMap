@@ -4,7 +4,7 @@ import os
 path = os.path.dirname(__file__)
 from pathlib import Path
 path = Path(path).parent.absolute().parent.absolute()
-path = str(path)
+path = str(path) + "/src/"
 import sys
 sys.path.append(path)
 

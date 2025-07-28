@@ -12,7 +12,6 @@ import pandas as pd
 import random
 import pickle
 import os
-import pickle
 import plotly.express as px
 import torchvision
 
@@ -104,7 +103,7 @@ def create_nonuniform_Mobius(n_samples, width=1):
 	return np.array([x, y, z]).T, color
 	
 
-def createBreastCancerDataset(path='Dataset_files/BreastCancerDataset.csv'):
+def createBreastCancerDataset(path='../Dataset_files/BreastCancerDataset.csv'):
     data = pd.read_csv(path)
     data = data.drop('id',axis=1)
     data=data.drop('Unnamed: 32',axis=1)
@@ -114,7 +113,7 @@ def createBreastCancerDataset(path='Dataset_files/BreastCancerDataset.csv'):
     return X,colors
 
 def createMammoth(N,k=30,seed=42):
-    mammoth = pd.read_csv('Dataset_files/mammoth.csv')
+    mammoth = pd.read_csv('../Dataset_files/mammoth.csv')
     if N <= len(mammoth):
         mammoth_sample = mammoth.sample(N)
     else:
@@ -186,12 +185,12 @@ def make_s_curve_with_hole(n_samples=4000, noise=0.05, random_state=42, hole_cen
 
 def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_dataset=False):
     # Check if the file already exists
-    if not os.path.exists('Dataset_files/'+filename+filetype):
+    if not os.path.exists('../Dataset_files/'+filename+filetype):
         print("\nDownloading '"+filename+"' data.")
-        os.makedirs('Dataset_files', exist_ok=True)
+        os.makedirs('../Dataset_files', exist_ok=True)
         if torch_dataset:
             if filename=='cifar10':
-                trainset = torchvision.datasets.CIFAR10(root='./Dataset_files', train=True, download=True)
+                trainset = torchvision.datasets.CIFAR10(root='./../Dataset_files', train=True, download=True)
             else:
                 raise("This dataset is not available")
             data = np.array(trainset.data, dtype=np.float32)
@@ -204,12 +203,12 @@ def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_d
             data = np.array(ddata['data'])
             labels = np.array(ddata['target'])
         # Save the dataset as a .pkl file
-        with open('Dataset_files/'+filename+filetype, 'wb') as f:
+        with open('../Dataset_files/'+filename+filetype, 'wb') as f:
             pickle.dump((data, labels), f)
 
-        print("Download successful. The files are stored in 'Dataset_files/"+filename+filetype+"' and are directly loaded from there in case you run this script a second time.")
+        print("Download successful. The files are stored in '../Dataset_files/"+filename+filetype+"' and are directly loaded from there in case you run this script a second time.")
     print("\nLoading '"+filename+"' data from file")
-    with open('Dataset_files/'+filename+filetype, 'rb') as f:
+    with open('../Dataset_files/'+filename+filetype, 'rb') as f:
         data, labels = pickle.load(f)
     print("Selecting subset of N = ",N)
     indices = random.sample(range(len(data)), N)
@@ -230,7 +229,7 @@ def load_CIFAR_10(N):
     return load_and_store_data_file(N, 'cifar10', torch_dataset=True)
 
 def load_heart_disease_dataset():
-    heart_disease_data = pd.read_csv('./Dataset_files/heart.csv')
+    heart_disease_data = pd.read_csv('./../Dataset_files/heart.csv')
     X = heart_disease_data.iloc[:, :-1]
     labels = heart_disease_data.iloc[:, -1]
     scaler = StandardScaler()
@@ -254,13 +253,13 @@ def plot_MNIST_samples(images, labels, num_samples=10):
     plt.tight_layout()  # Adjust the padding between and around the subplots
     plt.show()
 
-def plot_data(data,labels,title='Data',save=True,display=False,axis=False, colorbar=False):
+def plot_data(data,labels,title='Data',save=True,display=False,axis=False, colorbar=False, plot_sphere=False, path=None, size=3):
     if data.shape[0]==labels.shape[0]:
         fig = plt.figure(figsize=(12, 12))
         plt.title(title)
         dim = data.shape[1]
         if dim==2:
-            plt.scatter(data[:,0],data[:,1],s=3, c=labels, cmap="jet")
+            plt.scatter(data[:,0], data[:,1], s=size, c=labels, cmap="jet")
             if colorbar:
                 plt.colorbar()
             plt.gca().set_aspect('equal', adjustable='datalim')
@@ -268,14 +267,29 @@ def plot_data(data,labels,title='Data',save=True,display=False,axis=False, color
                 plt.axis('off')
         elif dim==3:
             ax = fig.add_subplot(111, projection="3d")
+            if plot_sphere:
+                radius = 0.95
+                u = np.linspace(0, 2 * np.pi, 1000)
+                v = np.linspace(0, np.pi, 1000)
+                x = radius * np.outer(np.cos(u), np.sin(v))
+                y = radius * np.outer(np.sin(u), np.sin(v))
+                z = radius * np.outer(np.ones(np.size(u)), np.cos(v))
+                ax.plot_surface(x, y, z, color='white', alpha=1.0, shade=False) # white sphere
             ax.scatter(data[:,0],data[:,1],data[:,2],s=3,c=labels, cmap="jet")
             ax.view_init(20, -20)
         else:
             print("Invalid dimension for plot")
         if save and (dim==2 or dim==3):
             # Create the output directory if it doesn't exist
-            os.makedirs('Results', exist_ok=True)
-            plt.savefig('./Results/'+title+'.png')
+            if path==None:
+                os.makedirs('Results', exist_ok=True)
+                plt.savefig('./Results/'+title+'.png')
+            else:
+                if path[-1] != '/':
+                    path = path + '/'
+                os.makedirs(path, exist_ok=True)
+                plt.savefig(path + title + '.png')
+
         if display:
             plt.show()
         else:
@@ -304,3 +318,82 @@ def printtime(name,delta_t):
         print("\n"+name+": %.2f min" % (delta_t / 60))
     else:
         print("\n"+name+": %.2f sec" % delta_t)
+
+import plotly.graph_objects as go
+import plotly.io as pio
+def plotlysphere(data,labels):
+    # Sphere coordinates
+    sphere_resolution = 300
+    u = np.linspace(0, 2 * np.pi, sphere_resolution)
+    v = np.linspace(0, np.pi, sphere_resolution)
+    r = 0.99
+    x = r * np.outer(np.cos(u), np.sin(v))
+    y = r * np.outer(np.sin(u), np.sin(v))
+    z = r * np.outer(np.ones(np.size(u)), np.cos(v))
+
+    # Create sphere surface
+    sphere = go.Surface(
+        x=x, y=y, z=z, 
+        opacity=1.0, 
+        colorscale=[[0, 'white'], [1, 'white']], 
+        # colorscale=[[0, 'lightgrey'], [0.5, 'white'], [1, 'darkgrey']],  # Simulated lighting gradient
+        showscale=False,
+    #     lightposition=dict(x=0, y=0, z=0)  # Light directly "into the screen"
+    # )
+        # lighting=dict(
+        #     ambient=0.4,  # A base ambient light
+        #     diffuse=0.9,  # Stronger diffuse lighting
+        #     specular=0.2,  # Mild highlights
+        #     roughness=0.8  # Softer reflections
+        # ),
+        # lightposition=dict(x=0, y=0, z=2)  # Light directly "into the screen"
+    )
+
+    # Random points on a sphere
+    # num_points = 100
+    # theta = np.random.uniform(0, 2 * np.pi, num_points)
+    # phi = np.random.uniform(0, np.pi, num_points)
+    # x_points = np.sin(phi) * np.cos(theta)
+    # y_points = np.sin(phi) * np.sin(theta)
+    # z_points = np.cos(phi)
+    # Scatter plot for the points
+    # points = go.Scatter3d(
+    #     x=x_points, y=y_points, z=z_points,
+    #     mode='markers',
+    #     marker=dict(size=4, color='blue')
+    # )
+    
+    # Use matplotlib's jet colormap to generate colors for labels
+    colormap = cm.get_cmap('jet', 10)  # 'jet' with 10 discrete colors
+    colors = [colormap(label / 9) for label in labels]  # Normalize labels to [0, 1]
+    # Convert colors to RGB format compatible with plotly
+    rgb_colors = ['rgb({:.0f}, {:.0f}, {:.0f})'.format(r*255, g*255, b*255) for r, g, b, _ in colors]
+    points = go.Scatter3d(
+        x=data[:, 0],  # x-coordinates from the first column of data
+        y=data[:, 1],  # y-coordinates from the second column
+        z=data[:, 2],  # z-coordinates from the third column
+        mode='markers',
+        marker=dict(
+            size=2,
+            color=rgb_colors  # Set colors based on labels
+        )
+    )
+
+    # Combine plots
+    fig = go.Figure(data=[sphere, points])
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(visible=False),  # Remove x-axis
+            yaxis=dict(visible=False),  # Remove y-axis
+            zaxis=dict(visible=False),  # Remove z-axis
+            aspectmode='data',          # Keep aspect ratio
+            bgcolor='black',             # Set background color
+            camera_projection=dict(type="orthographic")  # Prevent perspective distortion
+        ),
+        title="IsUMap - MNIST on the sphere"
+    )
+
+    # fig.update_layout(scene=dict(aspectmode='data'))
+    fig.show()
+
+    pio.write_html(fig, file="figure.html", auto_open=False)
