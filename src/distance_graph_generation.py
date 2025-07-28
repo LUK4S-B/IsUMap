@@ -13,8 +13,8 @@ from numba import njit, prange
 
 IMPLEMENTED_PHIS = ['exp','half_normal','log_normal','pareto','uniform','identity']
 
-def dijkstra_wrapper(graph, i):
-    return dijkstra(csgraph=graph, indices=i, directed=False, return_predecessors=False)
+def dijkstra_wrapper(graph, directedDistances, i):
+    return dijkstra(csgraph=graph, indices=i, directed=directedDistances, return_predecessors=False)
 
 @njit(parallel=True)
 def find_nn_DistMatrix(M, k:int):
@@ -27,13 +27,27 @@ def find_nn_DistMatrix(M, k:int):
     :return knn_distances: np.ndarray(n,d) - distances of nearest neighbors
 
     '''
+    # N = M.shape[0]
+    # knn_distances = np.empty((N, k))
+    # knn_inds = np.empty((N, k), dtype=np.int64)
+    # for i in prange(N):
+    #     partitioned_indices = np.argpartition(M[i], k)
+    #     knn_inds[i] = partitioned_indices[:k]
+    #     knn_distances[i] = M[i][knn_inds[i]]
+    # return knn_inds, knn_distances
     N = M.shape[0]
     knn_distances = np.empty((N, k))
     knn_inds = np.empty((N, k), dtype=np.int64)
     for i in prange(N):
         partitioned_indices = np.argpartition(M[i], k)
-        knn_inds[i] = partitioned_indices[:k]
-        knn_distances[i] = M[i][knn_inds[i]]
+        k_nearest_indices = partitioned_indices[:k]
+        k_nearest_distances = M[i][k_nearest_indices]
+        
+        # Sort the k nearest by distance
+        sort_order = np.argsort(k_nearest_distances)
+        knn_inds[i] = k_nearest_indices[sort_order]
+        knn_distances[i] = k_nearest_distances[sort_order]
+        
     return knn_inds, knn_distances
 
 def find_nn(data, k):
@@ -127,23 +141,30 @@ def freedman_dist(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k):
     d = (knn_distances[i][ind_j]+knn_distances[i][ind_k])/np.sqrt(2)
     return d
 
-def comp_graph(knn_inds, knn_distances, data, f, epm):
+def comp_graph(knn_inds, knn_distances, data, f, epm, directedDistances):
     N = knn_inds.shape[0]
     R = {} # R is a dictionary and R[(i,j,k)] contains the distance from point j to k in neighborhood i. Non-symmetrized. R is sparse in the sense that it does not contain distances that are infinite or when j==k
     for i in range(N):
         for ind_j,j in enumerate(knn_inds[i]):
             for ind_k,k in enumerate(knn_inds[i]):
-                if j<k:
+                if directedDistances:
                     if j==i:
                         R[(i,j,k)] = knn_distances[i][ind_k]
-                    elif k==i:
-                        R[(i,j,k)] = knn_distances[i][ind_j]
                     else:
                         if not epm: # epm == True leads to pure star graphs
                             R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
+                else:
+                    if j<k:
+                        if j==i:
+                            R[(i,j,k)] = knn_distances[i][ind_k]
+                        elif k==i:
+                            R[(i,j,k)] = knn_distances[i][ind_j]
+                        else:
+                            if not epm: # epm == True leads to pure star graphs
+                                R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
-def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0):
+def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0, save_fuzzy_graph = False):
     m_scheme_value = phi(m_scheme_value)
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
@@ -216,7 +237,8 @@ def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value =
         if np.isnan(g[key[1],key[2]]):
             raise ValueError("Error: g[key[1],key[2]] is NaN. Perhaps division by 0 or inf occured in some t-conorm or m-scheme.")
 
-    # save_npz("graph_before_inv.npz", g.tocsr())
+    if save_fuzzy_graph:
+        save_npz("graph_before_inv.npz", g.tocsr())
 
     for i, (row_indices, row_data) in enumerate(zip(g.rows, g.data)): 
         for j, value in zip(row_indices, row_data):
@@ -230,6 +252,7 @@ def distance_graph_generation(data,
            distBeyondNN:bool = True,
            verbose: bool = True,
            dataIsDistMatrix: bool = False,
+           directedDistances: bool = False,
            dataIsGeodesicDistMatrix: bool = False,
            saveDistMatrix: bool = False,
            tconorm = "canonical",
@@ -238,6 +261,7 @@ def distance_graph_generation(data,
            phi_inv = None,
            epm = True,
            m_scheme_value = 1.0,
+           save_fuzzy_graph = False,
            apply_Dijkstra = True,
            max_param = 100.0,
            **phi_params):
@@ -263,6 +287,8 @@ def distance_graph_generation(data,
     Does not do anything if t-conorm is 'canonical'.
     :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
     :param epm: If this parameter is set to True, then all non-radial distances in the star graph are set to Infinity as if we were in the category EPMet. Default is False.
+    :param save_fuzzy_graph: Safes the fuzzy graph before conversion to a metric space if desired.
+    :param apply_Dijkstra: If set to False, then no geodesic graph-hopping distances are added to the final distance matrix.
     :param **phi_params**: additional parameters to pass to the phi function.
     :return D: np.ndarray (n,n) - n x n distance graph. Can be directed if desired.
 
@@ -354,7 +380,7 @@ def distance_graph_generation(data,
             printtime("Nearest neighbours computed in",t1-t0)
 
         t0 = time()
-        distance = normalization(knn_distances,normalize,distBeyondNN)
+        knn_distances = normalization(knn_distances,normalize,distBeyondNN)
         t1 = time()
         if verbose:
             printtime("Normalization computed in",t1-t0)
@@ -364,27 +390,34 @@ def distance_graph_generation(data,
             print("Computing the graph...")
         if distFun == "freed":
             neighborhood_dist_function = freedman_dist
-        elif distFun == "canonical":
-            neighborhood_dist_function = canonical_dist
-        else:
+        elif distFun == "euclidean":
             neighborhood_dist_function = euclidean_dist
-        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function, epm)
+        else:
+            neighborhood_dist_function = canonical_dist
+        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function, epm, directedDistances)
+        t1=time()
+        if verbose:
+            printtime("Graph computation",t1-t0)
 
+        t0 = time()
         if verbose:
             print("Applying t-conorm...")
-        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value)
+        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value, save_fuzzy_graph)
+        t1=time()
+        if verbose:
+            printtime("T-conorm application",t1-t0)
         
-        if saveDistMatrix == True:
-            if verbose:
-                print("Storing distance matrix before geodesics")
-            with open('./Dataset_files/D_before_geod.pkl', 'wb') as f:
-                pickle.dump(graph.todense(), f)
+        # if saveDistMatrix == True:
+        #     if verbose:
+        #         print("Storing distance matrix before geodesics")
+        #     with open('./Dataset_files/D_before_geod.pkl', 'wb') as f:
+        #         pickle.dump(graph.todense(), f)
 
         if apply_Dijkstra:
             if verbose:
                 print("\nRunning Dijkstra...")
             t0 = time()
-            partial_func = partial(dijkstra_wrapper, graph)
+            partial_func = partial(dijkstra_wrapper, graph, directedDistances)
             D = []
             if __name__ == 'distance_graph_generation':
                 with Pool() as p:
@@ -392,14 +425,14 @@ def distance_graph_generation(data,
                     p.close()
                     p.join()
             D = np.array(D)
+            t1 = time()
+            if verbose:
+                printtime("Dijkstra",t1-t0)
         else:
             D = graph.toarray()
             diam = np.max(D)
             D[D==0] = max(diam,max_param)
             np.fill_diagonal(D, 0)
-        t1 = time()
-        if verbose:
-            printtime("Dijkstra",t1-t0)
         
         if saveDistMatrix == True:
             if verbose:

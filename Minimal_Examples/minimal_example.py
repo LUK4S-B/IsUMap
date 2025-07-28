@@ -1,3 +1,9 @@
+import os
+import sys
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PATH_CURRENT = os.path.join(SCRIPT_DIR, "../src/")
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
 
 from time import time
 from isumap import isumap
