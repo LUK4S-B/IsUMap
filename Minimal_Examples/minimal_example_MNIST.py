@@ -2,7 +2,8 @@ import os
 import sys
 
 # Set the path to the directory containing `isumap.py` 
-PATH_CURRENT = "../src/"  # Adjust this path as needed
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PATH_CURRENT = os.path.join(SCRIPT_DIR, "../src/")
 scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 
@@ -30,9 +31,9 @@ if __name__ == '__main__':
     # data, labels = createSwissRole(N,hole=True,seed=0)
     # data, labels = createFourGaussians(8.2,N)
     # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
-    # data, labels = createTorus(N,seed=0)
+    data, labels = createTorus(N,seed=0)
     # data, labels = createMammoth(N,k=30,seed=42)
-    data, labels = load_MNIST(N)
+    # data, labels = load_MNIST(N)
     # data, labels = createBreastCancerDataset()
     # data, labels = load_FashionMNIST(N)
 
