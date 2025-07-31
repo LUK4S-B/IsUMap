@@ -147,24 +147,16 @@ def comp_graph(knn_inds, knn_distances, data, f, epm, directedDistances):
     for i in range(N):
         for ind_j,j in enumerate(knn_inds[i]):
             for ind_k,k in enumerate(knn_inds[i]):
-                if directedDistances:
-                    if j==i:
-                        R[(i,j,k)] = knn_distances[i][ind_k]
-                    else:
-                        if not epm: # epm == True leads to pure star graphs
-                            R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
+                if j==i:
+                    R[(i,j,k)] = knn_distances[i][ind_k]
+                    if not directedDistances:
+                        R[(i,k,j)] = R[(i,j,k)]
                 else:
-                    if j<k:
-                        if j==i:
-                            R[(i,j,k)] = knn_distances[i][ind_k]
-                        elif k==i:
-                            R[(i,j,k)] = knn_distances[i][ind_j]
-                        else:
-                            if not epm: # epm == True leads to pure star graphs
-                                R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
+                    if not epm: # epm == True leads to pure star graphs
+                        R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
-def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0, save_fuzzy_graph = False):
+def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0, save_fuzzy_graph = False, return_fuzzy_graph = False, verbose = True):
     m_scheme_value = phi(m_scheme_value)
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
@@ -237,7 +229,14 @@ def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value =
         if np.isnan(g[key[1],key[2]]):
             raise ValueError("Error: g[key[1],key[2]] is NaN. Perhaps division by 0 or inf occured in some t-conorm or m-scheme.")
 
+    if return_fuzzy_graph:
+        if verbose:
+            print("Returning fuzzy graph without applying phi_inv and Dijkstra")
+        return g.tocsr()
+
     if save_fuzzy_graph:
+        if verbose:
+            print("Saving fuzzy graph before applying phi_inv and Dijkstra")
         save_npz("graph_before_inv.npz", g.tocsr())
 
     for i, (row_indices, row_data) in enumerate(zip(g.rows, g.data)): 
@@ -264,6 +263,7 @@ def distance_graph_generation(data,
            save_fuzzy_graph = False,
            apply_Dijkstra = True,
            max_param = 100.0,
+           return_fuzzy_graph = False,
            **phi_params):
     '''
 
@@ -402,10 +402,13 @@ def distance_graph_generation(data,
         t0 = time()
         if verbose:
             print("Applying t-conorm...")
-        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value, save_fuzzy_graph)
+        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value, save_fuzzy_graph, return_fuzzy_graph, verbose)
         t1=time()
         if verbose:
             printtime("T-conorm application",t1-t0)
+
+        if return_fuzzy_graph:
+            return graph
         
         # if saveDistMatrix == True:
         #     if verbose:
