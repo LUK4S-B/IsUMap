@@ -7,6 +7,15 @@ from data_and_plots import printtime
 
 from distance_graph_generation import distance_graph_generation
 
+import os
+import sys
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PATH_CURRENT = os.path.join(SCRIPT_DIR, "./cluster_mds/")
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
+from cluster_mds import cluster_mds
+from cluster_algos import linkage_cluster, leiden_cluster, linkage_clustering, leiden_clustering
+
 @njit
 def extractSubmatrices(D):
     '''
@@ -35,96 +44,38 @@ def extractSubmatrices(D):
         i += 1
     return SMs
 
-@njit(parallel=True)
-def euclideanDistance(x, y):
-    '''Computes euclidean distance of two arrays.'''
-    diff_xy = np.subtract(x, y)
-    return np.sqrt(np.dot(diff_xy, diff_xy))
 
-@njit(parallel=True)
-def euclideanDistanceMatrixOfArray(pointArray):
-    nc = pointArray.shape[0]
-    distanceMatrix = np.zeros((nc, nc))
-    for i in prange(nc):
-        for j in range(i + 1):
-            if i == j:
-                distanceMatrix[i, j] = 0.0
-            else:
-                distanceMatrix[i, j] = euclideanDistance(pointArray[i], pointArray[j])
-                distanceMatrix[j, i] = distanceMatrix[i, j]
-    return distanceMatrix
-
-def compute_mean_points_and_labels(nc, data, SM):
-    '''
-    Computes cluster centers for a collection of submatrices of the distance matrix corresponding to connected components.
-
-    :param nc: number of clusters/connected components
-    :param data: data matrix of shape (n,m)
-    :param SM: list of tuples (distance_matrices,indices)
-    :return meanPointsOfClusters: mean points of the clusters
-    :return clusterLabels: cluster labels
-    '''
-    meanPointsOfClusters = np.empty((nc, data[0].size))
-    clusterLabels = []
-    for i in prange(nc):
-        meanPointsOfClusters[i] = data[SM[i][1]].mean(0)
-        clusterLabels.append(float(i) * np.ones(len(SM[i][1])))
-    clusterLabels = np.concatenate(clusterLabels)
-    return meanPointsOfClusters, clusterLabels
-
-def subMatrixEmbeddings(nc, SM, meanPointEmbeddings, **reduce_dim_kwargs):
-
-    '''
-    applys function reduce_dim to a list of submatrices, corresponding to connected components
-
-
-    :param nc: nc: number of clusters/connected components
-    :param SM: list of tuples (distance_matrices,indices)
-    :param meanPointEmbeddings: embeddings of mean points of connected components
-    :param reduce_dim_kwargs: arguments for reduce_dim function
-    :return:
-    '''
-    submatrixEmbeddings = []
-    submatrixInitEmbeddings = []
-    for i in range(nc):
-        subMatrixInitEmb, subMatrixEmb = reduce_dim(SM[i][0], **reduce_dim_kwargs)
-
-        submatrixInitEmbeddings.append(subMatrixInitEmb)
-        submatrixEmbeddings.append(subMatrixEmb)
-
-        submatrixInitEmbeddings[i] += meanPointEmbeddings[i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixInitEmbeddings[i]-matrix
-        submatrixEmbeddings[i] += meanPointEmbeddings[i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixEmbeddings[i]-matrix
-
-    return submatrixInitEmbeddings, submatrixEmbeddings
-
-
-def isumap(data,
+def isumap_cluster(data,
            k: int,
-           d: int,
            normalize:bool = True,
            distBeyondNN:bool = True,
            verbose: bool = True,
            dataIsDistMatrix: bool = False,
            dataIsGeodesicDistMatrix: bool = False,
            saveDistMatrix: bool = False,
-           initialization = "cMDS",
-           metricMDS : bool = True,
-           sgd_n_epochs:int = 1000,
-           sgd_lr: float = 1e-2,
-           sgd_batch_size = None,
-           sgd_max_epochs_no_improvement: int = 100,
-           sgd_loss = 'MSE',
-           sgd_saveloss: bool = False,
            tconorm = "canonical",
            distFun = "canonical",
            phi = None,
            phi_inv = None,
            epm = True,
            m_scheme_value = 1.0,
+           save_fuzzy_graph = False,
            apply_Dijkstra = True,
            extractSubgraphs = True,
-           max_param = 100.0,
-           **phi_params):
+           max_param = np.inf,
+           cluster_algo = "linkage_cluster",
+           labels = None,
+           return_fuzzy_graph = False,
+           global_embedding = True,
+           directedDistances = False,
+           store_results = False,
+           display_results = True,
+           save_display_results = True,
+           plot_title = "Title",
+           also_return_optimizer_model_state = False,
+           also_return_medoid_paths = False,
+           orig_data = None,
+           **kwargs):
 
     '''
 
@@ -177,6 +128,17 @@ def isumap(data,
 
     '''
 
+    phi_kwargs = kwargs.get('phi_kwargs') or {}
+    cluster_algo_kwargs = kwargs.get('cluster_algo_kwargs') or {}
+
+
+    if cluster_algo == "linkage_cluster":
+        cluster_algo = linkage_cluster
+    elif cluster_algo == "leiden_cluster":
+        cluster_algo = leiden_cluster
+        return_fuzzy_graph = True # Leiden clustering must be appplied to a fuzzy graph
+        global_embedding = False
+
     N = data.shape[0]
     D, phi_inv = distance_graph_generation(data,
                                     k,
@@ -192,56 +154,34 @@ def isumap(data,
                                     phi_inv = phi_inv,
                                     epm = epm,
                                     m_scheme_value = m_scheme_value,
+                                    save_fuzzy_graph = save_fuzzy_graph,
                                     apply_Dijkstra = apply_Dijkstra,
                                     max_param = max_param,
-                                    **phi_params)
+                                    return_fuzzy_graph = return_fuzzy_graph,
+                                    **phi_kwargs)
 
-    t0 = time()
-    if extractSubgraphs:
-        SM = extractSubmatrices(D)
-    else:
-        S = np.array([i for i in range(N)])
-        SM = [(D, S)]
-    t1 = time()
-    if verbose:
-        printtime("Extracted connected components in",t1-t0)
+    # t0 = time()
+    # if extractSubgraphs:
+    #     SM = extractSubmatrices(D)
+    # else:
+    #     S = np.array([i for i in range(N)])
+    #     SM = [(D, S)]
+    # t1 = time()
+    # if verbose:
+    #     printtime("Extracted connected components in",t1-t0)
     
-    nc = len(SM)
-    if verbose:
-        print("Number of clusters = "+str(nc))
+    # nc = len(SM)
+    # if verbose:
+    #     print("Number of connected components = "+str(nc))
 
-    t0 = time()
-    meanPointsOfClusters, clusterLabels = compute_mean_points_and_labels(nc, data, SM)
-    t1 = time()
-    if verbose:
-        printtime("Mean points and labels",t1-t0)
+    # if nc > 1:
+    #     print("Number of connected components > 1. This is not yet implemented.") # TODO: implement
+    #     return None
     
-    if meanPointsOfClusters.shape[1] == d:
-        meanPointEmbeddings = meanPointsOfClusters
-    else:
-        t0 = time()
-        clusterDistanceMatrix = euclideanDistanceMatrixOfArray(meanPointsOfClusters)
-        t1 = time()
-        if verbose:
-            printtime("Euclidean distances",t1-t0)
-        
-        t0 = time()
-        _, meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size, max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", metricMDS=False, saveloss=False, verbose=verbose)
-        t1 = time()
-        if verbose:
-            printtime("Embedded the cluster mean points in",t1-t0)
-    
-    if verbose:
-        print("\nReducing dimension...")
-    t0 = time()
-    submatrixInitEmbeddings, submatrixEmbeddings = subMatrixEmbeddings(nc, SM, meanPointEmbeddings, d=d, n_epochs=sgd_n_epochs, lr=sgd_lr, batch_size=sgd_batch_size, max_epochs_no_improvement=sgd_max_epochs_no_improvement, loss=sgd_loss, initialization=initialization, metricMDS=metricMDS, saveloss=sgd_saveloss, verbose=verbose)
+    geodesic = not return_fuzzy_graph and apply_Dijkstra
 
-    t1 = time()
-    if verbose:
-        printtime("Computed submatrix embeddings in",t1-t0)
-    
-    finalInitEmbedding = np.concatenate(submatrixInitEmbeddings)
-    finalEmbedding = np.concatenate(submatrixEmbeddings)
-    
-    return  finalInitEmbedding, finalEmbedding, clusterLabels
+    results = cluster_mds(D, cluster_algo, geodesic = geodesic, verbose = verbose, phi_inv = phi_inv, true_labels = labels, global_embedding = global_embedding, directedDistances = directedDistances, store_results = store_results, display_results = display_results, save_display_results = save_display_results, plot_title = plot_title, also_return_optimizer_model_state = also_return_optimizer_model_state, also_return_medoid_paths = also_return_medoid_paths, orig_data = orig_data, **cluster_algo_kwargs)
+
+
+    return results
 

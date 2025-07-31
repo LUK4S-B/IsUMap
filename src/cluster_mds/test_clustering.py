@@ -79,7 +79,7 @@ mnist_labels = loadpkl('my_mnist_labels')
 
 # cluster mds
 
-from cluster_mds import cluster_mds
+from cluster_mds_old import cluster_mds
 
 def phi_inv(x):
     return -np.log(x)
@@ -93,5 +93,5 @@ def cluster_algo2(g):
     cluster_labels = np.array(leiden_partition.membership)
     return cluster_labels
 
-cluster_mds(D_after_geod, cluster_algo, true_labels=mnist_labels)
-# cluster_mds(g, cluster_algo2, geodesic=False, phi_inv=phi_inv, true_labels=mnist_labels)
+# cluster_mds(D_after_geod, cluster_algo, true_labels=mnist_labels)
+cluster_mds(g, cluster_algo2, geodesic=False, phi_inv=phi_inv, true_labels=mnist_labels, global_embedding=False)
