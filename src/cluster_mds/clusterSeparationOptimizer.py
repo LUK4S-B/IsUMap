@@ -19,7 +19,7 @@ class ClusterSeparationOptimizer(nn.Module):
     Optimized vectorized version with improved point-in-hull checking.
     """
     
-    def __init__(self, clusters: List[np.ndarray], medoids: List[np.ndarray], medoid_distances: np.ndarray, intercluster_distance_factor = 0.3, rotation_flag: bool = False, separation_weight: float = 1.0, drift_weight: float = 1.0, translation_penalty_factor: float = 0.0, rotation_penalty_factor: float = 1.0):
+    def __init__(self, clusters: List[np.ndarray], medoids: List[np.ndarray], medoid_distances: np.ndarray, intercluster_distance_factor = 0.0, rotation_flag: bool = False, separation_weight: float = 1.0, drift_weight: float = 1.0, translation_penalty_factor: float = 0.0, rotation_penalty_factor: float = 1.0):
         """
         Initialize the optimizer with clusters and their medoids.
         
@@ -44,12 +44,26 @@ class ClusterSeparationOptimizer(nn.Module):
         self.max_hull_vertices = 0
         self.cluster_diameters = torch.zeros(self.n_clusters)
         for i, cluster in enumerate(clusters):
-            hull = ConvexHull(cluster)
-            hull_vertices = torch.tensor(hull.vertices, dtype=torch.long)
-            self.hull_vertices_list.append(hull_vertices)
-            self.max_hull_vertices = max(self.max_hull_vertices, len(hull_vertices))
-
-            self.cluster_diameters[i] = self.compute_diameter(torch.tensor(cluster[hull_vertices], dtype=torch.float32))
+            # Check if we have enough points for a convex hull (need at least 3)
+            if len(cluster) >= 3:
+                try:
+                    hull = ConvexHull(cluster)
+                    hull_vertices = torch.tensor(hull.vertices, dtype=torch.long)
+                    self.hull_vertices_list.append(hull_vertices)
+                    self.max_hull_vertices = max(self.max_hull_vertices, len(hull_vertices))
+                    self.cluster_diameters[i] = self.compute_diameter(torch.tensor(cluster[hull_vertices], dtype=torch.float32))
+                except:
+                    # Fallback: use all points as vertices
+                    hull_vertices = torch.tensor(np.arange(len(cluster)), dtype=torch.long)
+                    self.hull_vertices_list.append(hull_vertices)
+                    self.max_hull_vertices = max(self.max_hull_vertices, len(cluster))
+                    self.cluster_diameters[i] = self.compute_diameter(torch.tensor(cluster, dtype=torch.float32))
+            else:
+                # For clusters with < 3 points, use all points as vertices
+                hull_vertices = torch.tensor(np.arange(len(cluster)), dtype=torch.long)
+                self.hull_vertices_list.append(hull_vertices)
+                self.max_hull_vertices = max(self.max_hull_vertices, len(cluster))
+                self.cluster_diameters[i] = self.compute_diameter(torch.tensor(cluster, dtype=torch.float32))
 
         # Convert to tensors and store original data
         self.original_clusters = [torch.tensor(c, dtype=torch.float32) for c in clusters]
@@ -704,13 +718,14 @@ def optimize_cluster_separation(clusters: List[np.ndarray],
                 print(f"Single frame saved as: {movie_filename.replace('.gif', '.png')}")
     
     if visualize:
+        visualize_optimization(optimizer_model, medoid_paths=np.array(medoid_paths))
+
         visualize_optimization_with_labels(optimizer_model, medoid_paths=np.array(medoid_paths), labels=labels)
 
     # Create a results dictionary to store all the data
     results = {
         'optimizer_model': optimizer_model,
         'medoid_paths': np.array(medoid_paths),
-        'labels': labels,
         'losses': losses
     }
 
@@ -970,7 +985,7 @@ def visualize_optimization(optimizer_model: ClusterSeparationOptimizer,
         ax2.scatter(p10[0], p10[1], s=50, c="red") 
         ax2.scatter(p20[0], p20[1], s=50, c="red")
     
-    ax2.legend()
+    # ax2.legend()
     ax2.grid(True, alpha=0.3)
     ax2.set_aspect('equal')
     
@@ -993,28 +1008,38 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
     
     # Plot cluster points
     ax1.set_title("Cluster points")
-    colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, optimizer_model.n_clusters))
+    # colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, optimizer_model.n_clusters))
 
     if labels is not None:
-        # Convert labels (integers) to colors using jet colormap
-        label_colors = []
-        for label_array in labels:
-            # Convert each integer label to its corresponding color from jet colormap
-            color_array = [colors[label] for label in label_array]
-            label_colors.append(color_array)
+        unique_labels = np.unique(np.concatenate(labels))
+        colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, unique_labels.shape[0]))
     else:
-        label_colors = colors
+        colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, optimizer_model.n_clusters))
+
+    # if labels is not None:
+    #     # Convert labels (integers) to colors using jet colormap
+    #     label_colors = []
+    #     for label_array in labels:
+    #         # Convert each integer label to its corresponding color from jet colormap
+    #         color_array = [colors[label % len(colors)] for label in label_array]
+    #         label_colors.append(color_array)
+    # else:
+    #     label_colors = colors
     
     for i, (cluster, medoid) in enumerate(zip(transformed_clusters, current_medoids)):
         cluster_np = cluster.detach().numpy()
         medoid_np = medoid.detach().numpy()
         
         if labels is not None:
+            # Convert labels to color indices efficiently
+            label_indices = np.searchsorted(unique_labels, labels[i])
+            label_colors = colors[label_indices]
+            
             ax1.scatter(cluster_np[:, 0], cluster_np[:, 1], 
-                   c=label_colors[i], alpha=0.6, s=5, edgecolors='none')
+                   c=label_colors, alpha=0.6, s=5, edgecolors='none')
         else:
             ax1.scatter(cluster_np[:, 0], cluster_np[:, 1], 
-                   c=[label_colors[i]], alpha=0.6, s=5, edgecolors='none')
+                   c=[colors[i]], alpha=0.6, s=5, edgecolors='none')
 
         # # Draw original convex hull
         # if len(cluster_np) >= 3:
@@ -1032,36 +1057,61 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
     for i in range(len(transformed_clusters)):
         if labels is not None:
             cluster_labels = labels[i]
-            unique, counts = np.unique(cluster_labels, return_counts=True)
-            majority_label = unique[np.argmax(counts)]
-            # Map majority label to jet colormap
-            cluster_majority_colors.append(colors[majority_label])
+            
+            # Use KDE to find the mode of the cluster labels
+            from scipy.stats import gaussian_kde
+            from scipy.signal import find_peaks
+            
+            # Create KDE with Silverman's rule
+            kde = gaussian_kde(cluster_labels, bw_method='silverman')
+            
+            # Create range for evaluation
+            x_range = np.linspace(cluster_labels.min(), cluster_labels.max(), 1000)
+            density = kde(x_range)
+            
+            # Find the peak (mode) of the density
+            peaks, _ = find_peaks(density, height=np.max(density) * 0.1, distance=50)
+            
+            if len(peaks) > 0:
+                # Use the highest peak as the mode
+                mode_position = x_range[peaks[np.argmax(density[peaks])]]
+            else:
+                # Fallback to mean if no peaks found
+                mode_position = np.mean(cluster_labels)
+            
+            # Find the element in unique_labels that is closest to the mode
+            distances_to_mode = np.abs(unique_labels - mode_position)
+            closest_label_idx = np.argmin(distances_to_mode)
+            
+            # Map the closest label to jet colormap
+            cluster_majority_colors.append(colors[closest_label_idx])
         else:
             cluster_majority_colors.append(colors[i])
 
-    # Create legend for unique labels
-    from matplotlib.lines import Line2D
-    legend_elements = []
+    # # Create legend for unique labels
+    # from matplotlib.lines import Line2D
+    # legend_elements = []
     
-    if labels is not None:
-        # Create legend for unique labels using the jet colormap
-        all_labels = []
-        for label_array in labels:
-            all_labels.extend(label_array)
-        unique_labels = np.unique(all_labels)
-        for label in unique_labels:
-            color = tuple(colors[label])
-            legend_elements.append(Line2D([0], [0], marker='o', color='w', 
-                                        markerfacecolor=color, markersize=10, 
-                                        label=f'{label}'))
-    else:
-        # Fallback for when no labels are provided
-        for i, color in enumerate(colors):
-            legend_elements.append(Line2D([0], [0], marker='o', color='w', 
-                                        markerfacecolor=color, markersize=10, 
-                                        label=f'{i+1}'))
+    # if labels is not None:
+    #     # Create legend for unique labels using the jet colormap
+    #     all_labels = []
+    #     for label_array in labels:
+    #         all_labels.extend(label_array)
+    #     unique_labels = np.unique(all_labels)
+    #     for label in unique_labels:
+    #         color = tuple(colors[label])
+    #         legend_elements.append(Line2D([0], [0], marker='o', color='w', 
+    #                                     markerfacecolor=color, markersize=10, 
+    #                                     label=f'{label}'))
+    # else:
+    #     # Fallback for when no labels are provided
+    #     for i, color in enumerate(colors):
+    #         legend_elements.append(Line2D([0], [0], marker='o', color='w', 
+    #                                     markerfacecolor=color, markersize=10, 
+    #                                     label=f'{i+1}'))
         
-    ax1.legend(handles=legend_elements)
+    # ax1.legend(handles=legend_elements)
+
     ax1.grid(True, alpha=0.3)
     ax1.set_aspect('equal')
     
@@ -1168,9 +1218,9 @@ def main():
         separation_weight=2.0,
         drift_weight=0.1,
         verbose=True,
-        create_movie=True,  # Enable movie creation
-        movie_fps=3,        # 3 frames per second
-        frame_interval=10,  # Capture frame every 10 iterations
+        create_movie=True,
+        movie_fps=3,
+        frame_interval=10, 
         movie_filename="cluster_optimization.gif"
     )
     

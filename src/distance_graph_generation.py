@@ -147,8 +147,11 @@ def comp_graph(knn_inds, knn_distances, data, f, epm, directedDistances):
     for i in range(N):
         for ind_j,j in enumerate(knn_inds[i]):
             for ind_k,k in enumerate(knn_inds[i]):
+                # if j<k:
                 if j==i:
                     R[(i,j,k)] = knn_distances[i][ind_k]
+                # elif k==i:
+                #     R[(i,j,k)] = knn_distances[i][ind_j]
                     if not directedDistances:
                         R[(i,k,j)] = R[(i,j,k)]
                 else:
@@ -232,7 +235,7 @@ def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value =
     if return_fuzzy_graph:
         if verbose:
             print("Returning fuzzy graph without applying phi_inv and Dijkstra")
-        return g.tocsr()
+        return g # (g + g.transpose())/2 # symmetrize
 
     if save_fuzzy_graph:
         if verbose:
@@ -262,7 +265,7 @@ def distance_graph_generation(data,
            m_scheme_value = 1.0,
            save_fuzzy_graph = False,
            apply_Dijkstra = True,
-           max_param = 100.0,
+           max_param = np.inf,
            return_fuzzy_graph = False,
            **phi_params):
     '''
@@ -408,13 +411,18 @@ def distance_graph_generation(data,
             printtime("T-conorm application",t1-t0)
 
         if return_fuzzy_graph:
-            return graph
+            return graph, phi_inv
         
         # if saveDistMatrix == True:
+        #     graph = graph.todense()
+        #     graph = graph + graph.transpose() # symmetrize without factor of 1/2 because graph is upper triangular matrix
+        #     # convert sparse entries to infinities:
+        #     graph[graph==0] = 1e10
+        #     np.fill_diagonal(graph, 0) # except for diagonal
         #     if verbose:
         #         print("Storing distance matrix before geodesics")
         #     with open('./Dataset_files/D_before_geod.pkl', 'wb') as f:
-        #         pickle.dump(graph.todense(), f)
+        #         pickle.dump(graph, f)
 
         if apply_Dijkstra:
             if verbose:
@@ -447,4 +455,7 @@ def distance_graph_generation(data,
             print("Using geodesic distance matrix")
         D = data
 
-    return D
+    # make sure D is completely symmetric
+    D = (D+D.T)/2
+
+    return D, phi_inv

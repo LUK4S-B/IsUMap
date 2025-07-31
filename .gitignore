@@ -5,4 +5,5 @@
 **/Results
 **/Loss_graphs
 **/Simulations/Experiments_ATMP/Dataset_files/
+**/*.npz
 Dataset_files/mnist_784.pkl

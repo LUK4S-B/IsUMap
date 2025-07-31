@@ -1,5 +1,6 @@
 import os
 import sys
+import numpy as np
 
 # Set the path to the directory containing `isumap.py` 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -7,46 +8,45 @@ PATH_CURRENT = os.path.join(SCRIPT_DIR, "../src/")
 scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 
-from isumap import isumap
+from isumap_cluster import isumap_cluster
 from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST
 
 from multiprocessing import cpu_count
 from time import time
 
 k = 15
-d = 2
-N = 4000
+N = 3000
 
-epm = False
+epm = True
 normalize = True
 distBeyondNN = False
-tconorm = "probabilistic sum"
+tconorm = "canonical"
 distFun = "canonical"
-sgd_loss = "MSE"
+
 
 if __name__ == '__main__':
-    title = "MNIST 3D N_" + str(N) + " k_" + str(k) + " beyondNN_" + str(distBeyondNN) + " normalize_" + str(normalize) + " tconorm_" + tconorm + " distFun_" + distFun + " phi_exp" + " epm_" + str(epm) + " mdsLoss" + sgd_loss
+    title = "MNIST 3D N_" + str(N) + " k_" + str(k) + " beyondNN_" + str(distBeyondNN) + " normalize_" + str(normalize) + " tconorm_" + tconorm + " distFun_" + distFun + " phi_exp" + " epm_" + str(epm)
 
     # data, labels = createNonUniformHemisphere(N)
     # data, labels = createSwissRole(N,hole=True,seed=0)
     # data, labels = createFourGaussians(8.2,N)
     # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
-    # data, labels = createTorus(N,seed=0)
+    data, labels = createTorus(N,seed=0)
     # data, labels = createMammoth(N,k=30,seed=42)
-    data, labels = load_MNIST(N)
+    # data, labels = load_MNIST(N)
     # data, labels = createBreastCancerDataset()
     # data, labels = load_FashionMNIST(N)
 
-    # plot_data(data,labels,title="Initial dataset",display=True, save=False)
+    plot_data(data,labels,title="Initial dataset",display=True, save=False)
     
     t0=time()
-    finalInitEmbedding, finalEmbedding, clusterLabels = isumap(data, k, d,
-        normalize = normalize, distBeyondNN=distBeyondNN, sgd_saveloss=True, sgd_loss=sgd_loss, tconorm = tconorm, epm=epm, distFun=distFun)
+    results = isumap_cluster(data, k,
+        normalize = normalize, distBeyondNN=distBeyondNN, tconorm = tconorm, distFun=distFun, epm=epm, cluster_algo = "linkage_cluster", labels = labels, orig_data = np.copy(data))
     t1 = time()
     
-    plot_data(finalInitEmbedding,labels,title=title+" init",display=True, save=True)
-    plot_data(finalEmbedding,labels,title=title,display=True, save=True)
-    print("\nResult saved in './Results/" + title + ".png'")
+    # plot_data(finalInitEmbedding,labels,title=title+" init",display=True, save=True)
+    # plot_data(finalEmbedding,labels,title=title,display=True, save=True)
+    # print("\nResult saved in './Results/" + title + ".png'")
     
     printtime("Isumap total time",t1-t0)
     

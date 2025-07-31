@@ -15,11 +15,10 @@ from time import time
 from dimension_reduction_schemes import classical_multidimensional_scaling
 from data_and_plots import plot_data, printtime
 
-# from cluster_sgd_simplified import optimize_cluster_separation
 from clusterSeparationOptimizer import optimize_cluster_separation
 
-def dijkstra_wrapper(graph, i):
-    return dijkstra(csgraph=graph, indices=i, directed=False, return_predecessors=False)
+def dijkstra_wrapper(graph, directedDistances, i):
+    return dijkstra(csgraph=graph, indices=i, directed=directedDistances, return_predecessors=False)
 
 def identity(x):
     return x
@@ -60,18 +59,24 @@ def special_plot(data_array,special_points,colors,special_point_colors):
     plt.tight_layout()
     plt.show()
 
-def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv = identity, sep_parameter = 1.1, true_labels = None, global_embedding = True):
-    N = g.shape[0]
-    cluster_labels = cluster_algo(g)
-    # clusters = [g[cluster_labels==a][cluster_labels==a] for a in np.unique(cluster_labels)]
+def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv = identity, true_labels = None, global_embedding = True, directedDistances = False, store_results = False, display_results = True, save_display_results = True, plot_title = "title", also_return_optimizer_model_state = False, also_return_medoid_paths = False, orig_data = None, **cluster_algo_kwargs):
+
+    cluster_labels = cluster_algo(g, **cluster_algo_kwargs)
+
+    if orig_data is not None:
+        if true_labels is not None:
+            plot_data(orig_data, true_labels, title="Initial dataset with true labels",  display=True, save=False)
+        if cluster_labels is not None:
+            plot_data(orig_data, cluster_labels, title="Initial dataset with cluster labels",  display=True, save=False)
+
     unique_cluster_labels = np.unique(cluster_labels)
-    # cluster_number = len(unique_cluster_labels)
     cluster_embeddings = []
     cluster_indices = []
-    cluster_medoids = []
+    cluster_medoid_indices = []
     true_labels_reordered = []
     if not geodesic:
         g = convert_graph_to_dist_matrix(g, phi_inv)
+        
     for label in unique_cluster_labels:
         cluster_index = cluster_labels==label
         cluster_indices.append(cluster_index)
@@ -83,9 +88,9 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
             if verbose:
                 print("\nRunning Dijkstra...")
             t0 = time()
-            partial_func = partial(dijkstra_wrapper, cluster)
+            partial_func = partial(dijkstra_wrapper, cluster, directedDistances)
             D = []
-            if __name__ == 'cluster_mds_sgd_global':
+            if __name__ == 'cluster_mds':
                 with Pool() as p:
                     D = p.map(partial_func, range(cluster.shape[0]))
                     p.close()
@@ -94,122 +99,113 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
             t1 = time()
             if verbose:
                 printtime("Dijkstra",t1-t0)
-        cluster_medoid = np.argmin(np.sum(cluster, axis=1)) # compute medoid (https://en.wikipedia.org/wiki/Medoid), similar to geometric median (https://en.wikipedia.org/wiki/Geometric_median#Definition) or Fermat point (https://en.wikipedia.org/wiki/Fermat_point)
-        cluster_medoids.append(cluster_medoid)
+        cluster_medoid_index = np.argmin(np.sum(cluster, axis=1)) # compute medoid (https://en.wikipedia.org/wiki/Medoid), similar to geometric median (https://en.wikipedia.org/wiki/Geometric_median#Definition) or Fermat point (https://en.wikipedia.org/wiki/Fermat_point)
+        cluster_medoid_indices.append(cluster_medoid_index)
 
         if not global_embedding:
             cluster_embedding = classical_multidimensional_scaling(cluster, d, verbose)
             cluster_embeddings.append(cluster_embedding)
 
+    for i in range(len(cluster_indices)):
+        print(cluster_indices[i][cluster_indices[i]==True].shape)
+
+    cluster_medoid_indices = np.array(cluster_medoid_indices)
+    # Convert cluster medoid indices to global indices
+    global_medoid_indices = []
+    current_index = 0
+    for i, cluster_index in enumerate(cluster_indices):
+        cluster_size = np.sum(cluster_index)
+        global_medoid_index = current_index + cluster_medoid_indices[i]
+        global_medoid_indices.append(global_medoid_index)
+        current_index += cluster_size
+    global_medoid_indices = np.array(global_medoid_indices)
+
+    if geodesic:
+        medoid_distances = g[global_medoid_indices][:, global_medoid_indices]
+    else:
+        geodesic_medoid_distances = dijkstra(g,
+                        directed=directedDistances,
+                        indices=global_medoid_indices,
+                        return_predecessors=False)
+        # Extract submatrix for select points only
+        medoid_distances = geodesic_medoid_distances[:, global_medoid_indices]
+
+    medoid_distances = np.array(medoid_distances)
+
+    complete_embeddings = []
     if global_embedding:
-        if not geodesic:
+        if not isinstance(g, np.ndarray):
             g = g.todense()
         emb = classical_multidimensional_scaling(g, d, verbose)
         medoid_list = []
-        for cluster_index, cluster_medoid in zip(cluster_indices, cluster_medoids):
+        for cluster_index, cluster_medoid in zip(cluster_indices, cluster_medoid_indices):
             low_dim_cluster = emb[cluster_index]
             cluster_embeddings.append(low_dim_cluster)
             medoid_list.append(low_dim_cluster[cluster_medoid])
+        cluster_medoid_indices = np.array(cluster_medoid_indices)
 
-    cluster_medoids = np.array(cluster_medoids)
-
-    if geodesic:
-        medoid_distances = g[cluster_medoids][:,cluster_medoids]
-    else:
-        geodesic_medoid_distances = dijkstra(g,
-                        directed=False,
-                        indices=cluster_medoids,
-                        return_predecessors=False)
-        # Extract submatrix for select points only
-        medoid_distances = geodesic_medoid_distances[:, cluster_medoids]
-
-    medoid_distances = np.array(medoid_distances)
-    
-    if not global_embedding:
-        medoid_embedding = classical_multidimensional_scaling(medoid_distances, d, verbose)
-        medoid_list = [medoid for medoid in medoid_embedding]
-
-    for medoid,cemb in zip(medoid_list,cluster_embeddings):
-        matches = np.all(cemb == medoid, axis=1)
-        yes = np.any(matches)
-        print(yes)
-
-    # plot_data(medoid_embedding, unique_cluster_labels, title="medoids", display=True, save=True, size=10)
-
-    # complete_embedding = np.zeros([N, d])
-    complete_embeddings = []
-    c = 0
-    if global_embedding:
         for cluster_embedding in cluster_embeddings:
             complete_embeddings.append(cluster_embedding)
     else:
+        medoid_embedding = classical_multidimensional_scaling(medoid_distances, d, verbose)
+        medoid_list = [medoid for medoid in medoid_embedding]
         for cluster_embedding, cluster_index, medoid in zip(cluster_embeddings, cluster_indices, medoid_embedding):
             # complete_embedding[cluster_index] = cluster_embedding + medoid
             complete_embeddings.append(cluster_embedding + medoid)
 
-
     if true_labels is not None:
         true_labels_reordered_array = np.concatenate(true_labels_reordered)
     else:
+        true_labels_reordered = None
         true_labels_reordered_array = None
-        # c+=1
-        # plot_data(complete_embedding, cluster_labels, title="complete_"+str(c), display=True, save=False)
-    
-    # plot_data(complete_embedding, cluster_labels, title="complete_" + str(sep_parameter), display=True, save=True)
-    # if true_labels is not None:
-    #     plot_data(complete_embedding, true_labels, title="complete true_" + str(sep_parameter), display=True, save=True)
-    # special_plot(emb,medoid_list,cluster_labels,unique_cluster_labels)
 
-    print("Starting optimization...")
 
+    # --------------- CLUSTER SEPARATION OPTIMIZATION ---------------
+    print("\nStarting cluster separation optimization...")
     results = optimize_cluster_separation(complete_embeddings, medoid_list, medoid_distances, labels=true_labels_reordered)
-    # results = optimize_cluster_separation(complete_embeddings, medoid_list, medoid_distances)
 
-    # Extract the optimizer model from results
+    # Organize data
     sgd_optimized_model = results['optimizer_model']
     medoid_paths = results['medoid_paths']
-    labels = results['labels']
     losses = results['losses']
 
     transformed_clusters = sgd_optimized_model.apply_transformations()
     current_medoids = sgd_optimized_model.get_current_medoids()
 
     transformed_clusters = np.vstack([np.array(cluster.detach().numpy()) for cluster in transformed_clusters])
-    
-    # Store results to file
-    import pickle
-    import os
-    
-    # Create results directory if it doesn't exist
-    results_dir = "optimization_results"
-    os.makedirs(results_dir, exist_ok=True)
-    
-    # Save results with timestamp
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{results_dir}/cluster_mds_results_{timestamp}.pkl"
-    
-    # Prepare data for saving (convert tensors to numpy arrays)
-    save_data = {
+
+    return_data = {
         'transformed_clusters': transformed_clusters,
-        'medoid_paths': medoid_paths,
-        'labels': labels,
+        'current_medoids': current_medoids,
+        'cluster_labels': np.sort(cluster_labels),
+        'true_labels': true_labels_reordered_array,
         'losses': losses,
-        'cluster_labels': cluster_labels,
-        'true_labels_reordered_array': true_labels_reordered_array,
-        'sep_parameter': sep_parameter,
-        'optimizer_model_state': sgd_optimized_model.state_dict()
-    }
-    
-    with open(filename, 'wb') as f:
-        pickle.dump(save_data, f)
-    
-    print(f"Results saved to: {filename}")
-    
-    plot_data(transformed_clusters, np.sort(cluster_labels), title="complete_" + str(sep_parameter), display=True, save=True)
-    if true_labels is not None:
-        plot_data(transformed_clusters, true_labels_reordered_array, title="complete true_" + str(sep_parameter), display=True, save=True)
+        }
+    if also_return_optimizer_model_state:
+        return_data['optimizer_model_state'] = sgd_optimized_model.state_dict()
+    if also_return_medoid_paths:
+        return_data['medoid_paths'] = medoid_paths
 
+    if store_results:
+        import pickle
+        import os
 
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{results_dir}/cluster_mds_results_{timestamp}.pkl"
+        
+        results_dir = "optimization_results"
+        os.makedirs(results_dir, exist_ok=True)
+        with open(filename, 'wb') as f:
+            pickle.dump(return_data, f)
+        
+        print(f"Results saved to: {filename}")
+    
+    if display_results:
+        plot_data(transformed_clusters, np.sort(cluster_labels), title=plot_title, display=True, save=save_display_results)
+        if true_labels is not None:
+            plot_data(transformed_clusters, true_labels_reordered_array, title=plot_title + " true_labels ", display=True, save=save_display_results)
+
+    return return_data
 
 
