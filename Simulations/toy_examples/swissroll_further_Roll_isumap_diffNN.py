@@ -2,11 +2,18 @@ import os
 import sys
 
 # Set the path to the directory containing `isumap.py`
-PATH_CURRENT = "../"  # Adjust this path as needed
+PATH_CURRENT = "../../src/"  # Adjust this path as needed
 
 scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 
+
+import os
+import sys
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PATH_CURRENT = os.path.join(SCRIPT_DIR, "../../src/")
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
 
 import numpy as np
 import matplotlib.pyplot as plt

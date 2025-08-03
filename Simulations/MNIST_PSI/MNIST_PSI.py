@@ -8,14 +8,14 @@ from sklearn.metrics import confusion_matrix
 
 # Directories for each method
 save_dirs = {
-    'IsUMAP': './../../MNIST_PSI/MNIST_isumap_csv',
-    'Isomap': './../../MNIST_PSI/MNIST_isomap_csv/',
-    'UMAP': './../../MNIST_PSI/MNIST_umap_csv/'
+    'IsUMAP': './../results/MNIST_PSI/MNIST_isumap_csv',
+    'Isomap': './../results/MNIST_PSI/MNIST_isomap_csv/',
+    'UMAP': './../results/MNIST_PSI/MNIST_umap_csv/'
 }
 
 # MNIST
-train = pd.read_csv('./../../Dataset_fils/mnist_train.csv')
-test = pd.read_csv('./../../Dataset_fils/mnist_test.csv')
+train = pd.read_csv('./../../Dataset_files/mnist_train.csv')
+test = pd.read_csv('./../../Dataset_files/mnist_test.csv')
 y_train = train['label']
 
 X_train = train.drop('label', axis=1)

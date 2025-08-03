@@ -1,21 +1,21 @@
+from time import time
 import numpy as np
-from scipy.sparse import csr_matrix, lil_matrix
+from multiprocessing import Pool, cpu_count
+from functools import partial
+from scipy.sparse import csr_matrix, lil_matrix, save_npz
 from scipy.sparse.csgraph import dijkstra
 import scipy.special as s
 from sklearn.neighbors import NearestNeighbors
-from time import time
 import pickle
-from numba import njit, prange
-from multiprocessing import Pool, cpu_count
-from functools import partial
-from dimensionReductionSchemes import reduce_dim
-from data_and_plots import printtime
 import warnings
+from data_and_plots import printtime
+from numba import njit, prange
+from sklearn.decomposition import PCA
 
 IMPLEMENTED_PHIS = ['exp','half_normal','log_normal','pareto','uniform','identity']
 
-def dijkstra_wrapper(graph, i):
-    return dijkstra(csgraph=graph, indices=i, directed=False, return_predecessors=False)
+def dijkstra_wrapper(graph, directedDistances, i):
+    return dijkstra(csgraph=graph, indices=i, directed=directedDistances, return_predecessors=False)
 
 @njit(parallel=True)
 def find_nn_DistMatrix(M, k:int):
@@ -28,13 +28,27 @@ def find_nn_DistMatrix(M, k:int):
     :return knn_distances: np.ndarray(n,d) - distances of nearest neighbors
 
     '''
+    # N = M.shape[0]
+    # knn_distances = np.empty((N, k))
+    # knn_inds = np.empty((N, k), dtype=np.int64)
+    # for i in prange(N):
+    #     partitioned_indices = np.argpartition(M[i], k)
+    #     knn_inds[i] = partitioned_indices[:k]
+    #     knn_distances[i] = M[i][knn_inds[i]]
+    # return knn_inds, knn_distances
     N = M.shape[0]
     knn_distances = np.empty((N, k))
     knn_inds = np.empty((N, k), dtype=np.int64)
     for i in prange(N):
         partitioned_indices = np.argpartition(M[i], k)
-        knn_inds[i] = partitioned_indices[:k]
-        knn_distances[i] = M[i][knn_inds[i]]
+        k_nearest_indices = partitioned_indices[:k]
+        k_nearest_distances = M[i][k_nearest_indices]
+        
+        # Sort the k nearest by distance
+        sort_order = np.argsort(k_nearest_distances)
+        knn_inds[i] = k_nearest_indices[sort_order]
+        knn_distances[i] = k_nearest_distances[sort_order]
+        
     return knn_inds, knn_distances
 
 def find_nn(data, k):
@@ -128,23 +142,25 @@ def freedman_dist(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k):
     d = (knn_distances[i][ind_j]+knn_distances[i][ind_k])/np.sqrt(2)
     return d
 
-def comp_graph(knn_inds, knn_distances, data, f, epm):
+def comp_graph(knn_inds, knn_distances, data, f, epm, directedDistances):
     N = knn_inds.shape[0]
     R = {} # R is a dictionary and R[(i,j,k)] contains the distance from point j to k in neighborhood i. Non-symmetrized. R is sparse in the sense that it does not contain distances that are infinite or when j==k
     for i in range(N):
         for ind_j,j in enumerate(knn_inds[i]):
             for ind_k,k in enumerate(knn_inds[i]):
-                if j<k:
-                    if j==i:
-                        R[(i,j,k)] = knn_distances[i][ind_k]
-                    elif k==i:
-                        R[(i,j,k)] = knn_distances[i][ind_j]
-                    else:
-                        if not epm: # epm == True leads to pure star graphs
-                            R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
+                # if j<k:
+                if j==i:
+                    R[(i,j,k)] = knn_distances[i][ind_k]
+                # elif k==i:
+                #     R[(i,j,k)] = knn_distances[i][ind_j]
+                    if not directedDistances:
+                        R[(i,k,j)] = R[(i,j,k)]
+                else:
+                    if not epm: # epm == True leads to pure star graphs
+                        R[(i,j,k)] = f(knn_distances, knn_inds, data, i, j, k, ind_j, ind_k)
     return R
 
-def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0):
+def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value = 1.0, save_fuzzy_graph = False, return_fuzzy_graph = False, verbose = True):
     m_scheme_value = phi(m_scheme_value)
     if tconorm == "probabilistic sum":
         def T_conorm(a,b):
@@ -213,9 +229,19 @@ def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value =
         if tconorm.startswith("m_scheme"):
             if g[key[1],key[2]] == 0:
                 g[key[1],key[2]] = np.inf  # this is necessary because we use sparse matrices that can not be initialized with inf-values. However, all values that remain entirely 0 are treated as if they were inf by Dijkstra later. Hence, this operation only has to be performed for the case in which some-non-infinite value exists at that key in the graph dictionary
-        g[key[1],key[2]] = T_conorm(phi(value),g[key[1],key[2]])
+        g[key[1],key[2]] = T_conorm(phi(value),g[key[1],key[2]]) + np.nextafter(0., np.float32(1.))
         if np.isnan(g[key[1],key[2]]):
             raise ValueError("Error: g[key[1],key[2]] is NaN. Perhaps division by 0 or inf occured in some t-conorm or m-scheme.")
+
+    if return_fuzzy_graph:
+        if verbose:
+            print("Returning fuzzy graph without applying phi_inv and Dijkstra")
+        return g # (g + g.transpose())/2 # symmetrize
+
+    if save_fuzzy_graph:
+        if verbose:
+            print("Saving fuzzy graph before applying phi_inv and Dijkstra")
+        save_npz("graph_before_inv.npz", g.tocsr())
 
     for i, (row_indices, row_data) in enumerate(zip(g.rows, g.data)): 
         for j, value in zip(row_indices, row_data):
@@ -223,174 +249,8 @@ def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value =
 
     return g.tocsr()
 
-@njit
-def extractSubmatrices(D):
-    '''
-    Extracts submatrices of connected components of a distance matrix.
-    The distance matrix has to have np.inf whenever two points are in different connected components,
-    and this property needs to be transitive.
 
-    :param D: np.ndarray(n,n) - distance matrix with np.inf indicating points being in different connected components
-    :return Sms: list of  tuples (np.ndarray,indices) - distance matrices of the component together with indices
-    '''
-    N = D.shape[0]
-    S = np.array([i for i in range(N)])
-    SMs = []
-    i = 0
-    while S.size != 0:
-        indSet = np.where(D[S[0]] != np.inf)[0]
-        n = len(indSet)
-        SMs.append((np.empty((n, n)), indSet))
-        for j in range(n):
-            SMs[i][0][j] = D[indSet[j]][indSet]
-        # Manual implementation of np.setdiff1d
-        mask = np.ones(S.shape[0], dtype=np.bool_)
-        for ind in indSet:
-            mask[np.where(S == ind)] = False
-        S = S[mask]
-        i += 1
-    return SMs
-
-@njit(parallel=True)
-def euclideanDistance(x, y):
-    '''Computes euclidean distance of two arrays.'''
-    diff_xy = np.subtract(x, y)
-    return np.sqrt(np.dot(diff_xy, diff_xy))
-
-@njit(parallel=True)
-def euclideanDistanceMatrixOfArray(pointArray):
-    nc = pointArray.shape[0]
-    distanceMatrix = np.zeros((nc, nc))
-    for i in prange(nc):
-        for j in range(i + 1):
-            if i == j:
-                distanceMatrix[i, j] = 0.0
-            else:
-                distanceMatrix[i, j] = euclideanDistance(pointArray[i], pointArray[j])
-                distanceMatrix[j, i] = distanceMatrix[i, j]
-    return distanceMatrix
-
-def compute_mean_points_and_labels(nc, data, SM):
-    '''
-    Computes cluster centers for a collection of submatrices of the distance matrix corresponding to connected components.
-
-    :param nc: number of clusters/connected components
-    :param data: data matrix of shape (n,m)
-    :param SM: list of tuples (distance_matrices,indices)
-    :return meanPointsOfClusters: mean points of the clusters
-    :return clusterLabels: cluster labels
-    '''
-    meanPointsOfClusters = np.empty((nc, data[0].size))
-    clusterLabels = []
-    for i in prange(nc):
-        meanPointsOfClusters[i] = data[SM[i][1]].mean(0)
-        clusterLabels.append(float(i) * np.ones(len(SM[i][1])))
-    clusterLabels = np.concatenate(clusterLabels)
-    return meanPointsOfClusters, clusterLabels
-
-def subMatrixEmbeddings(nc, SM, meanPointEmbeddings, **reduce_dim_kwargs):
-
-    '''
-    applys function reduce_dim to a list of submatrices, corresponding to connected components
-
-
-    :param nc: nc: number of clusters/connected components
-    :param SM: list of tuples (distance_matrices,indices)
-    :param meanPointEmbeddings: embeddings of mean points of connected components
-    :param reduce_dim_kwargs: arguments for reduce_dim function
-    :return:
-    '''
-    submatrixEmbeddings = []
-    submatrixInitEmbeddings = []
-    for i in range(nc):
-        subMatrixInitEmb, subMatrixEmb = reduce_dim(SM[i][0], **reduce_dim_kwargs)
-
-        submatrixInitEmbeddings.append(subMatrixInitEmb)
-        submatrixEmbeddings.append(subMatrixEmb)
-
-        submatrixInitEmbeddings[i] += meanPointEmbeddings[i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixInitEmbeddings[i]-matrix
-        submatrixEmbeddings[i] += meanPointEmbeddings[i]  # adds the meanPointEmbeddings[i]-vector to each row of the subMatrixEmbeddings[i]-matrix
-
-    return submatrixInitEmbeddings, submatrixEmbeddings
-
-
-def isumap(data,
-           k: int,
-           d: int,
-           normalize:bool = True,
-           distBeyondNN:bool = True,
-           verbose: bool = True,
-           dataIsDistMatrix: bool = False,
-           dataIsGeodesicDistMatrix: bool = False,
-           saveDistMatrix: bool = False,
-           initialization = "cMDS",
-           metricMDS : bool = True,
-           sgd_n_epochs:int = 1000,
-           sgd_lr: float = 1e-2,
-           sgd_batch_size = None,
-           sgd_max_epochs_no_improvement: int = 100,
-           sgd_loss = 'MSE',
-           sgd_saveloss: bool = False,
-           tconorm = "canonical",
-           distFun = "canonical",
-           phi = None,
-           phi_inv = None,
-           epm = True,
-           m_scheme_value = 1.0,
-           apply_Dijkstra = True,
-           extractSubgraphs = True,
-           **phi_params):
-
-    '''
-
-    IsUMap embeds data into a d-dimensional space, using the colimit in the category of uber-metric spaces, by means
-    of Dijkstra's algorithm after a merging of local metric spaces via the minimum.
-    The low-dimensional points are then obtained via multidimensional scaling.
-
-
-    Distances are normalized to obtain a manifold where the data is uniformly distributed as in UMAP (this step is optional,
-    else, the method reduces to ISOMAP).
-    Connected components of the data are embedded separately, centered around their means.
-
-
-
-    :param data: np.ndarray (n,m) - matrix of data points
-    :param k: int - number of nearest neighbors to use in distance computation
-    :param d: int - dimensionality of the embedding
-    :param normalize: bool - if True, data is normalized by k-nn distance
-    :param distBeyondNN: bool - if True, distance of nearest neighbor is subtracted from distances
-    :param verbose: bool - if True, prints progress and time information
-    :param dataIsDistMatrix: bool - whether data is a distance matrix, if False, distance is computed from data
-    :param dataIsGeodesicDistMatrix: bool - whether data is geodesic distance matrix, if False, dijkstra is applied
-    :param saveDistMatrix:  bool -whether to save distance matrix
-    :param initialization: initialization for dimensionality reduction
-    :param metricMDS: bool - if True, metricMDS is used for dimensionality reduction
-    :param sgd_n_epochs: int - number of epochs for SGD, only used if metricMDS = True
-    :param sgd_lr: float -lr for SGD, only used if metricMDS = True
-    :param sgd_batch_size: int - batch size for SGD, only used if metricMDS=True
-    :param sgd_max_epochs_no_improvement: int - number of epochs until early stopping, only used if metricMDS = True
-    :param sgd_loss: loss for SGD (one of ['MSE','Sammon'] or custom loss)
-    :param sgd_saveloss:  bool - whether to save plots of SGD loss
-    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
-    :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
-    If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
-    Does not do anything if t-conorm is 'canonical'.
-    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
-    :param epm: If this parameter is set to True, then all non-radial distances in the star graph are set to Infinity as if we were in the category EPMet. Default is False.
-    :param **phi_params**: additional parameters to pass to the phi function.
-    :return finalInitEmbedding: np.ndarray (n,d) - initial low dimensional embedding before the application of metric MDS 
-    :return finalEmbedding: np.ndarray (n,d) - low dimensional embedding. If metricMDS = False, then finalEmbedding==finalInitEmbedding.
-    :return clusterLabels: labels of connected components of the distance matrix
-
-    ...............................................
-
-    Example Usage:
-
-    X = np.random.normal((1000,10))
-    Y = isumap(X,k=15,d=2)
-
-
-    '''
+def generate_phi_functions(phi, phi_inv, tconorm, m_scheme_value, normalize, data, **phi_params):
     if tconorm.startswith("m_scheme"):
         if phi != None:
             warnings.warn("When using m_schemes, phi must equal the identity. The specified phi is not going to have any effect. Use other tconorms instead if you want to make use of phi.")
@@ -453,6 +313,76 @@ def isumap(data,
         phi = lambda x: np.exp(-x/scale)
         phi_inv = lambda x: -np.log(x)*scale
 
+    return phi, phi_inv
+
+def distance_graph_generation(data,
+           k: int,
+           normalize:bool = True,
+           distBeyondNN:bool = True,
+           verbose: bool = True,
+           dataIsDistMatrix: bool = False,
+           directedDistances: bool = False,
+           dataIsGeodesicDistMatrix: bool = False,
+           saveDistMatrix: bool = False,
+           tconorm = "canonical",
+           distFun = "canonical",
+           phi = None,
+           phi_inv = None,
+           epm = True,
+           m_scheme_value = 1.0,
+           save_fuzzy_graph = False,
+           apply_Dijkstra = True,
+           max_param = np.inf,
+           return_fuzzy_graph = False,
+           preprocess_with_pca = False,
+           pca_components = 40,
+           **phi_params):
+    '''
+
+    distance_graph_generation generates an n x n distance matrix, where n is the number of provided data points. The distances are generated with the following steps:
+        1. Local neighborhoods are extracted from the datapoints,
+        2. The distances in those are normalized if desired
+        3. Local neighborhoods are merged, for example using T-conorms
+        4. The Dijkstra algorithm is used if desired to compute the geodesics of the merged graph
+
+    :param data: np.ndarray (n,m) - matrix of data points
+    :param k: int - number of nearest neighbors to use in distance computation
+    :param normalize: bool - if True, data is normalized by k-nn distance
+    :param distBeyondNN: bool - if True, distance of nearest neighbor is subtracted from distances
+    :param verbose: bool - if True, prints progress and time information
+    :param dataIsDistMatrix: bool - whether data is a distance matrix, if False, distance is computed from data
+    :param dataIsGeodesicDistMatrix: bool - whether data is geodesic distance matrix, if False, dijkstra is applied
+    :param saveDistMatrix:  bool -whether to save distance matrix
+    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
+    :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
+    If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
+    Does not do anything if t-conorm is 'canonical'.
+    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
+    :param epm: If this parameter is set to True, then all non-radial distances in the star graph are set to Infinity as if we were in the category EPMet. Default is False.
+    :param save_fuzzy_graph: Safes the fuzzy graph before conversion to a metric space if desired.
+    :param apply_Dijkstra: If set to False, then no geodesic graph-hopping distances are added to the final distance matrix.
+    :param **phi_params**: additional parameters to pass to the phi function.
+    :return D: np.ndarray (n,n) - n x n distance graph. Can be directed if desired.
+
+    ...............................................
+
+    Example Usage:
+
+    X = np.random.normal((1000,10))
+    D = distance_graph_generation(X,k=15)
+
+
+    '''
+    
+    phi, phi_inv = generate_phi_functions(phi, phi_inv, tconorm, m_scheme_value, normalize, data, **phi_params)
+
+    if preprocess_with_pca:
+        pca_components = min(pca_components, data.shape[1])
+        if verbose:
+            print("Preprocessing with PCA with "+str(pca_components)+" components...")
+        pca = PCA(n_components=pca_components)
+        data = pca.fit_transform(data)
+
     if verbose:
         print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
@@ -469,7 +399,7 @@ def isumap(data,
             printtime("Nearest neighbours computed in",t1-t0)
 
         t0 = time()
-        distance = normalization(knn_distances,normalize,distBeyondNN)
+        knn_distances = normalization(knn_distances,normalize,distBeyondNN)
         t1 = time()
         if verbose:
             printtime("Normalization computed in",t1-t0)
@@ -479,35 +409,57 @@ def isumap(data,
             print("Computing the graph...")
         if distFun == "freed":
             neighborhood_dist_function = freedman_dist
-        elif distFun == "canonical":
-            neighborhood_dist_function = canonical_dist
-        else:
+        elif distFun == "euclidean":
             neighborhood_dist_function = euclidean_dist
-        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function, epm)
+        else:
+            neighborhood_dist_function = canonical_dist
+        data_D = comp_graph(knn_inds, knn_distances, data, neighborhood_dist_function, epm, directedDistances)
+        t1=time()
+        if verbose:
+            printtime("Graph computation",t1-t0)
 
+        t0 = time()
         if verbose:
             print("Applying t-conorm...")
-        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value)
+        graph = apply_t_conorm_recursively(data_D,tconorm,N, phi, phi_inv, m_scheme_value, save_fuzzy_graph, return_fuzzy_graph, verbose)
+        t1=time()
+        if verbose:
+            printtime("T-conorm application",t1-t0)
+
+        if return_fuzzy_graph:
+            return graph, phi_inv, data
         
+        # if saveDistMatrix == True:
+        #     graph = graph.todense()
+        #     graph = graph + graph.transpose() # symmetrize without factor of 1/2 because graph is upper triangular matrix
+        #     # convert sparse entries to infinities:
+        #     graph[graph==0] = 1e10
+        #     np.fill_diagonal(graph, 0) # except for diagonal
+        #     if verbose:
+        #         print("Storing distance matrix before geodesics")
+        #     with open('./Dataset_files/D_before_geod.pkl', 'wb') as f:
+        #         pickle.dump(graph, f)
+
         if apply_Dijkstra:
             if verbose:
                 print("\nRunning Dijkstra...")
             t0 = time()
-            partial_func = partial(dijkstra_wrapper, graph)
+            partial_func = partial(dijkstra_wrapper, graph, directedDistances)
             D = []
-            if __name__ == 'isumap':
+            if __name__ == 'distance_graph_generation':
                 with Pool() as p:
                     D = p.map(partial_func, range(N))
                     p.close()
                     p.join()
             D = np.array(D)
+            t1 = time()
+            if verbose:
+                printtime("Dijkstra",t1-t0)
         else:
             D = graph.toarray()
-            D[D==0] = np.inf
+            diam = np.max(D)
+            D[D==0] = max(diam,max_param)
             np.fill_diagonal(D, 0)
-        t1 = time()
-        if verbose:
-            printtime("Dijkstra",t1-t0)
         
         if saveDistMatrix == True:
             if verbose:
@@ -519,52 +471,7 @@ def isumap(data,
             print("Using geodesic distance matrix")
         D = data
 
-    t0 = time()
-    if extractSubgraphs:
-        SM = extractSubmatrices(D)
-    else:
-        S = np.array([i for i in range(N)])
-        SM = [(D, S)]
-    t1 = time()
-    if verbose:
-        printtime("Extracted connected components in",t1-t0)
-    
-    nc = len(SM)
-    if verbose:
-        print("Number of clusters = "+str(nc))
+    # make sure D is completely symmetric
+    D = (D+D.T)/2
 
-    t0 = time()
-    meanPointsOfClusters, clusterLabels = compute_mean_points_and_labels(nc, data, SM)
-    t1 = time()
-    if verbose:
-        printtime("Mean points and labels",t1-t0)
-    
-    if meanPointsOfClusters.shape[1] == d:
-        meanPointEmbeddings = meanPointsOfClusters
-    else:
-        t0 = time()
-        clusterDistanceMatrix = euclideanDistanceMatrixOfArray(meanPointsOfClusters)
-        t1 = time()
-        if verbose:
-            printtime("Euclidean distances",t1-t0)
-        
-        t0 = time()
-        _, meanPointEmbeddings = reduce_dim(clusterDistanceMatrix, d=d, n_epochs = sgd_n_epochs, lr=sgd_lr, batch_size = sgd_batch_size, max_epochs_no_improvement = sgd_max_epochs_no_improvement, loss = sgd_loss, initialization="cMDS", metricMDS=False, saveloss=False, verbose=verbose)
-        t1 = time()
-        if verbose:
-            printtime("Embedded the cluster mean points in",t1-t0)
-    
-    if verbose:
-        print("\nReducing dimension...")
-    t0 = time()
-    submatrixInitEmbeddings, submatrixEmbeddings = subMatrixEmbeddings(nc, SM, meanPointEmbeddings, d=d, n_epochs=sgd_n_epochs, lr=sgd_lr, batch_size=sgd_batch_size, max_epochs_no_improvement=sgd_max_epochs_no_improvement, loss=sgd_loss, initialization=initialization, metricMDS=metricMDS, saveloss=sgd_saveloss, verbose=verbose)
-
-    t1 = time()
-    if verbose:
-        printtime("Computed submatrix embeddings in",t1-t0)
-    
-    finalInitEmbedding = np.concatenate(submatrixInitEmbeddings)
-    finalEmbedding = np.concatenate(submatrixEmbeddings)
-    
-    return  finalInitEmbedding, finalEmbedding, clusterLabels
-
+    return D, phi_inv, data

@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import os, sys
 scriptPath = os.path.realpath(os.path.dirname(sys.argv[0]))
 os.chdir(scriptPath)
-sys.path.append("results/")
+sys.path.append("../results/Classifier_Experiments/")
 
-with open('./results/results_cifar_no_normalization.pkl', 'rb') as f:
+with open(scriptPath + '/../results/Classifier_Experiments/results_cifar_no_normalization.pkl', 'rb') as f:
     rs = pickle.load(f)
 
 rss = rs['classifier_results']

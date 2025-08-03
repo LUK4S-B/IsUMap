@@ -1,12 +1,11 @@
 # see: https://scanpy.readthedocs.io/en/stable/tutorials/basics/clustering.html
 # cells: bone marrow mononuclear cells of healthy human donors
 import os
-path = os.path.dirname(__file__)
-from pathlib import Path
-path = Path(path).parent.absolute().parent.absolute()
-path = str(path)
 import sys
-sys.path.append(path)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PATH_CURRENT = os.path.join(SCRIPT_DIR, "../../src/")
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
 
 from time import time
 from isumap import isumap

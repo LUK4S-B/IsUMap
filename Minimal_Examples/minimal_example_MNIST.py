@@ -1,21 +1,31 @@
+import os
+import sys
 
-from time import time
+# Set the path to the directory containing `isumap.py` 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PATH_CURRENT = os.path.join(SCRIPT_DIR, "../src/")
+scriptPath = os.path.abspath(PATH_CURRENT)
+sys.path.append(scriptPath)
+
 from isumap import isumap
 from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST
+
 from multiprocessing import cpu_count
+from time import time
 
 k = 15
 d = 2
-N = 5000
+N = 4000
 
 epm = False
 normalize = True
 distBeyondNN = False
 tconorm = "probabilistic sum"
 distFun = "canonical"
+sgd_loss = "MSE"
 
 if __name__ == '__main__':
-    title = "MNIST N_" + str(N) + " k_" + str(k) + " beyondNN_" + str(distBeyondNN) + " normalize_" + str(normalize) + " tconorm_" + tconorm + " distFun_" + distFun + " phi_exp" + " epm_" + str(epm)
+    title = "MNIST 3D N_" + str(N) + " k_" + str(k) + " beyondNN_" + str(distBeyondNN) + " normalize_" + str(normalize) + " tconorm_" + tconorm + " distFun_" + distFun + " phi_exp" + " epm_" + str(epm) + " mdsLoss" + sgd_loss
 
     # data, labels = createNonUniformHemisphere(N)
     # data, labels = createSwissRole(N,hole=True,seed=0)
@@ -31,7 +41,7 @@ if __name__ == '__main__':
     
     t0=time()
     finalInitEmbedding, finalEmbedding, clusterLabels = isumap(data, k, d,
-        normalize = normalize, distBeyondNN=distBeyondNN, sgd_saveloss=True, tconorm = tconorm, epm=epm, distFun=distFun)
+        normalize = normalize, distBeyondNN=distBeyondNN, sgd_saveloss=True, sgd_loss=sgd_loss, tconorm = tconorm, epm=epm, distFun=distFun)
     t1 = time()
     
     plot_data(finalInitEmbedding,labels,title=title+" init",display=True, save=True)
