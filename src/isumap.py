@@ -124,6 +124,8 @@ def isumap(data,
            apply_Dijkstra = True,
            extractSubgraphs = True,
            max_param = 100.0,
+           preprocess_with_pca = False,
+           pca_components = 40,
            **phi_params):
 
     '''
@@ -178,7 +180,7 @@ def isumap(data,
     '''
 
     N = data.shape[0]
-    D, phi_inv = distance_graph_generation(data,
+    D, phi_inv, data = distance_graph_generation(data,
                                     k,
                                     normalize = normalize,
                                     distBeyondNN = distBeyondNN,
@@ -194,6 +196,8 @@ def isumap(data,
                                     m_scheme_value = m_scheme_value,
                                     apply_Dijkstra = apply_Dijkstra,
                                     max_param = max_param,
+                                    preprocess_with_pca = preprocess_with_pca,
+                                    pca_components = pca_components,
                                     **phi_params)
 
     t0 = time()

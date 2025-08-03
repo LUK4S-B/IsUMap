@@ -59,11 +59,11 @@ def special_plot(data_array,special_points,colors,special_point_colors):
     plt.tight_layout()
     plt.show()
 
-def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv = identity, true_labels = None, global_embedding = True, directedDistances = False, store_results = False, display_results = True, save_display_results = True, plot_title = "title", also_return_optimizer_model_state = False, also_return_medoid_paths = False, orig_data = None, **cluster_algo_kwargs):
+def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv = identity, true_labels = None, global_embedding = True, directedDistances = False, store_results = False, display_results = False, save_display_results = True, plot_title = "title", also_return_optimizer_model = False, also_return_medoid_paths = False, orig_data = None, plot_original_data = False, visualize_results = False, **cluster_algo_kwargs):
 
     cluster_labels = cluster_algo(g, **cluster_algo_kwargs)
 
-    if orig_data is not None:
+    if orig_data is not None and plot_original_data:
         if true_labels is not None:
             plot_data(orig_data, true_labels, title="Initial dataset with true labels",  display=True, save=False)
         if cluster_labels is not None:
@@ -106,8 +106,8 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
             cluster_embedding = classical_multidimensional_scaling(cluster, d, verbose)
             cluster_embeddings.append(cluster_embedding)
 
-    for i in range(len(cluster_indices)):
-        print(cluster_indices[i][cluster_indices[i]==True].shape)
+    # for i in range(len(cluster_indices)):
+    #     print(cluster_indices[i][cluster_indices[i]==True].shape)
 
     cluster_medoid_indices = np.array(cluster_medoid_indices)
     # Convert cluster medoid indices to global indices
@@ -162,7 +162,7 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
 
     # --------------- CLUSTER SEPARATION OPTIMIZATION ---------------
     print("\nStarting cluster separation optimization...")
-    results = optimize_cluster_separation(complete_embeddings, medoid_list, medoid_distances, labels=true_labels_reordered)
+    results = optimize_cluster_separation(complete_embeddings, medoid_list, medoid_distances, labels=true_labels_reordered, visualize=visualize_results)
 
     # Organize data
     sgd_optimized_model = results['optimizer_model']
@@ -179,10 +179,11 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
         'current_medoids': current_medoids,
         'cluster_labels': np.sort(cluster_labels),
         'true_labels': true_labels_reordered_array,
+        'true_labels_split_into_clusters': true_labels_reordered,
         'losses': losses,
         }
-    if also_return_optimizer_model_state:
-        return_data['optimizer_model_state'] = sgd_optimized_model.state_dict()
+    if also_return_optimizer_model:
+        return_data['optimizer_model'] = sgd_optimized_model
     if also_return_medoid_paths:
         return_data['medoid_paths'] = medoid_paths
 

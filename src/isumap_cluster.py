@@ -69,12 +69,15 @@ def isumap_cluster(data,
            global_embedding = True,
            directedDistances = False,
            store_results = False,
-           display_results = True,
-           save_display_results = True,
+           display_results = False,
+           save_display_results = False,
            plot_title = "Title",
-           also_return_optimizer_model_state = False,
+           also_return_optimizer_model = False,
            also_return_medoid_paths = False,
-           orig_data = None,
+           preprocess_with_pca = False,
+           pca_components = 40,
+           plot_original_data = False,
+           visualize_results = False,
            **kwargs):
 
     '''
@@ -140,7 +143,7 @@ def isumap_cluster(data,
         global_embedding = False
 
     N = data.shape[0]
-    D, phi_inv = distance_graph_generation(data,
+    D, phi_inv, data = distance_graph_generation(data,
                                     k,
                                     normalize = normalize,
                                     distBeyondNN = distBeyondNN,
@@ -158,6 +161,8 @@ def isumap_cluster(data,
                                     apply_Dijkstra = apply_Dijkstra,
                                     max_param = max_param,
                                     return_fuzzy_graph = return_fuzzy_graph,
+                                    preprocess_with_pca = preprocess_with_pca,
+                                    pca_components = pca_components,
                                     **phi_kwargs)
 
     # t0 = time()
@@ -180,7 +185,7 @@ def isumap_cluster(data,
     
     geodesic = not return_fuzzy_graph and apply_Dijkstra
 
-    results = cluster_mds(D, cluster_algo, geodesic = geodesic, verbose = verbose, phi_inv = phi_inv, true_labels = labels, global_embedding = global_embedding, directedDistances = directedDistances, store_results = store_results, display_results = display_results, save_display_results = save_display_results, plot_title = plot_title, also_return_optimizer_model_state = also_return_optimizer_model_state, also_return_medoid_paths = also_return_medoid_paths, orig_data = orig_data, **cluster_algo_kwargs)
+    results = cluster_mds(D, cluster_algo, geodesic = geodesic, verbose = verbose, phi_inv = phi_inv, true_labels = labels, global_embedding = global_embedding, directedDistances = directedDistances, store_results = store_results, display_results = display_results, save_display_results = save_display_results, plot_title = plot_title, also_return_optimizer_model = also_return_optimizer_model, also_return_medoid_paths = also_return_medoid_paths, orig_data = data, plot_original_data = plot_original_data, visualize_results = visualize_results, **cluster_algo_kwargs)
 
 
     return results
