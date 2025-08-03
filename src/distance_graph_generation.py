@@ -10,6 +10,7 @@ import pickle
 import warnings
 from data_and_plots import printtime
 from numba import njit, prange
+from sklearn.decomposition import PCA
 
 IMPLEMENTED_PHIS = ['exp','half_normal','log_normal','pareto','uniform','identity']
 
@@ -248,63 +249,8 @@ def apply_t_conorm_recursively(graph, tconorm, N, phi, phi_inv, m_scheme_value =
 
     return g.tocsr()
 
-def distance_graph_generation(data,
-           k: int,
-           normalize:bool = True,
-           distBeyondNN:bool = True,
-           verbose: bool = True,
-           dataIsDistMatrix: bool = False,
-           directedDistances: bool = False,
-           dataIsGeodesicDistMatrix: bool = False,
-           saveDistMatrix: bool = False,
-           tconorm = "canonical",
-           distFun = "canonical",
-           phi = None,
-           phi_inv = None,
-           epm = True,
-           m_scheme_value = 1.0,
-           save_fuzzy_graph = False,
-           apply_Dijkstra = True,
-           max_param = np.inf,
-           return_fuzzy_graph = False,
-           **phi_params):
-    '''
 
-    distance_graph_generation generates an n x n distance matrix, where n is the number of provided data points. The distances are generated with the following steps:
-        1. Local neighborhoods are extracted from the datapoints,
-        2. The distances in those are normalized if desired
-        3. Local neighborhoods are merged, for example using T-conorms
-        4. The Dijkstra algorithm is used if desired to compute the geodesics of the merged graph
-
-    :param data: np.ndarray (n,m) - matrix of data points
-    :param k: int - number of nearest neighbors to use in distance computation
-    :param normalize: bool - if True, data is normalized by k-nn distance
-    :param distBeyondNN: bool - if True, distance of nearest neighbor is subtracted from distances
-    :param verbose: bool - if True, prints progress and time information
-    :param dataIsDistMatrix: bool - whether data is a distance matrix, if False, distance is computed from data
-    :param dataIsGeodesicDistMatrix: bool - whether data is geodesic distance matrix, if False, dijkstra is applied
-    :param saveDistMatrix:  bool -whether to save distance matrix
-    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
-    :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
-    If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
-    Does not do anything if t-conorm is 'canonical'.
-    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
-    :param epm: If this parameter is set to True, then all non-radial distances in the star graph are set to Infinity as if we were in the category EPMet. Default is False.
-    :param save_fuzzy_graph: Safes the fuzzy graph before conversion to a metric space if desired.
-    :param apply_Dijkstra: If set to False, then no geodesic graph-hopping distances are added to the final distance matrix.
-    :param **phi_params**: additional parameters to pass to the phi function.
-    :return D: np.ndarray (n,n) - n x n distance graph. Can be directed if desired.
-
-    ...............................................
-
-    Example Usage:
-
-    X = np.random.normal((1000,10))
-    D = distance_graph_generation(X,k=15)
-
-
-    '''
-    
+def generate_phi_functions(phi, phi_inv, tconorm, m_scheme_value, normalize, data, **phi_params):
     if tconorm.startswith("m_scheme"):
         if phi != None:
             warnings.warn("When using m_schemes, phi must equal the identity. The specified phi is not going to have any effect. Use other tconorms instead if you want to make use of phi.")
@@ -367,6 +313,76 @@ def distance_graph_generation(data,
         phi = lambda x: np.exp(-x/scale)
         phi_inv = lambda x: -np.log(x)*scale
 
+    return phi, phi_inv
+
+def distance_graph_generation(data,
+           k: int,
+           normalize:bool = True,
+           distBeyondNN:bool = True,
+           verbose: bool = True,
+           dataIsDistMatrix: bool = False,
+           directedDistances: bool = False,
+           dataIsGeodesicDistMatrix: bool = False,
+           saveDistMatrix: bool = False,
+           tconorm = "canonical",
+           distFun = "canonical",
+           phi = None,
+           phi_inv = None,
+           epm = True,
+           m_scheme_value = 1.0,
+           save_fuzzy_graph = False,
+           apply_Dijkstra = True,
+           max_param = np.inf,
+           return_fuzzy_graph = False,
+           preprocess_with_pca = False,
+           pca_components = 40,
+           **phi_params):
+    '''
+
+    distance_graph_generation generates an n x n distance matrix, where n is the number of provided data points. The distances are generated with the following steps:
+        1. Local neighborhoods are extracted from the datapoints,
+        2. The distances in those are normalized if desired
+        3. Local neighborhoods are merged, for example using T-conorms
+        4. The Dijkstra algorithm is used if desired to compute the geodesics of the merged graph
+
+    :param data: np.ndarray (n,m) - matrix of data points
+    :param k: int - number of nearest neighbors to use in distance computation
+    :param normalize: bool - if True, data is normalized by k-nn distance
+    :param distBeyondNN: bool - if True, distance of nearest neighbor is subtracted from distances
+    :param verbose: bool - if True, prints progress and time information
+    :param dataIsDistMatrix: bool - whether data is a distance matrix, if False, distance is computed from data
+    :param dataIsGeodesicDistMatrix: bool - whether data is geodesic distance matrix, if False, dijkstra is applied
+    :param saveDistMatrix:  bool -whether to save distance matrix
+    :param tconorm: the t-conorm used for symmetrization - one of ['canonical', 'probabilistic sum', 'bounded sum', 'drastic sum', 'Einstein sum', 'nilpotent maximum']
+    :param phi: None or str or callable: phi function to transfer metrics to fuzzy weights. If None, defaults to exponential function.
+    If a string, must be one of ['exp','half_normal','log_normal','pareto','uniform']. Else, custom function may be used. Has to be callable, and an inverse phi_inv has to be provided.
+    Does not do anything if t-conorm is 'canonical'.
+    :param phi_inv: None or callable: inverse of phi function. If None, defaults to log. Else, must be callable inverse of phi.
+    :param epm: If this parameter is set to True, then all non-radial distances in the star graph are set to Infinity as if we were in the category EPMet. Default is False.
+    :param save_fuzzy_graph: Safes the fuzzy graph before conversion to a metric space if desired.
+    :param apply_Dijkstra: If set to False, then no geodesic graph-hopping distances are added to the final distance matrix.
+    :param **phi_params**: additional parameters to pass to the phi function.
+    :return D: np.ndarray (n,n) - n x n distance graph. Can be directed if desired.
+
+    ...............................................
+
+    Example Usage:
+
+    X = np.random.normal((1000,10))
+    D = distance_graph_generation(X,k=15)
+
+
+    '''
+    
+    phi, phi_inv = generate_phi_functions(phi, phi_inv, tconorm, m_scheme_value, normalize, data, **phi_params)
+
+    if preprocess_with_pca:
+        pca_components = min(pca_components, data.shape[1])
+        if verbose:
+            print("Preprocessing with PCA with "+str(pca_components)+" components...")
+        pca = PCA(n_components=pca_components)
+        data = pca.fit_transform(data)
+
     if verbose:
         print("Number of CPU threads = ",cpu_count())
     N = data.shape[0]
@@ -411,7 +427,7 @@ def distance_graph_generation(data,
             printtime("T-conorm application",t1-t0)
 
         if return_fuzzy_graph:
-            return graph, phi_inv
+            return graph, phi_inv, data
         
         # if saveDistMatrix == True:
         #     graph = graph.todense()
@@ -458,4 +474,4 @@ def distance_graph_generation(data,
     # make sure D is completely symmetric
     D = (D+D.T)/2
 
-    return D, phi_inv
+    return D, phi_inv, data

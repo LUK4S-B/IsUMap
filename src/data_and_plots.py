@@ -92,6 +92,29 @@ def createSwissRole(N,hole=True,seed=0):
     return datasets.make_swiss_roll(n_samples=N, hole = hole, noise=0.0 , random_state=seed)
 
 
+def createSCurve(N, noise=0.0, seed=0):
+    """Generate an S-curve dataset using scikit-learn's make_s_curve.
+    
+    Parameters
+    ----------
+    N : int
+        The number of sample points on the S curve.
+    noise : float, default=0.0
+        The standard deviation of the gaussian noise.
+    seed : int, default=0
+        Random state for reproducibility.
+        
+    Returns
+    -------
+    data : ndarray of shape (N, 3)
+        The S-curve points in 3D space.
+    colors : ndarray of shape (N,)
+        The univariate position of each sample along the curve.
+    """
+    data, colors = datasets.make_s_curve(n_samples=N, noise=noise, random_state=seed)
+    return data, colors
+
+
 def create_nonuniform_Mobius(n_samples, width=1):
 	rng = np.random.default_rng(seed=0)
 	u = rng.uniform(0, 2 * np.pi, size=n_samples) 
@@ -112,8 +135,8 @@ def createBreastCancerDataset(path='../Dataset_files/BreastCancerDataset.csv'):
     colors=data['diagnosis']
     return X,colors
 
-def createMammoth(N,k=30,seed=42):
-    mammoth = pd.read_csv('../Dataset_files/mammoth.csv')
+def createMammoth(N,k=30,seed=42,datasetPath='../Dataset_files/'):
+    mammoth = pd.read_csv(datasetPath+'mammoth.csv')
     if N <= len(mammoth):
         mammoth_sample = mammoth.sample(N)
     else:
@@ -129,6 +152,7 @@ def createMammoth(N,k=30,seed=42):
     colors = KN.predict(mammoth_sample)
 
     return np.array(mammoth_sample), colors
+
 
 
 def make_s_curve_with_hole(n_samples=4000, noise=0.05, random_state=42, hole_center=(0, 1, 0), hole_radius=0.5):
@@ -183,11 +207,11 @@ def make_s_curve_with_hole(n_samples=4000, noise=0.05, random_state=42, hole_cen
 
 ###
 
-def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_dataset=False):
+def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_dataset=False, datasetPath='../Dataset_files/'):
     # Check if the file already exists
-    if not os.path.exists('../Dataset_files/'+filename+filetype):
+    if not os.path.exists(datasetPath+filename+filetype):
         print("\nDownloading '"+filename+"' data.")
-        os.makedirs('../Dataset_files', exist_ok=True)
+        os.makedirs(datasetPath, exist_ok=True)
         if torch_dataset:
             if filename=='cifar10':
                 trainset = torchvision.datasets.CIFAR10(root='./../Dataset_files', train=True, download=True)
@@ -203,12 +227,12 @@ def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_d
             data = np.array(ddata['data'])
             labels = np.array(ddata['target'])
         # Save the dataset as a .pkl file
-        with open('../Dataset_files/'+filename+filetype, 'wb') as f:
+        with open(datasetPath+filename+filetype, 'wb') as f:
             pickle.dump((data, labels), f)
 
         print("Download successful. The files are stored in '../Dataset_files/"+filename+filetype+"' and are directly loaded from there in case you run this script a second time.")
     print("\nLoading '"+filename+"' data from file")
-    with open('../Dataset_files/'+filename+filetype, 'rb') as f:
+    with open(datasetPath+filename+filetype, 'rb') as f:
         data, labels = pickle.load(f)
     print("Selecting subset of N = ",N)
     indices = random.sample(range(len(data)), N)
@@ -219,14 +243,14 @@ def load_and_store_data_file(N,filename,filetype='.pkl', normalize=True, torch_d
     labels = np.array(labels[indices],dtype=np.int64)
     return data,labels
 
-def load_MNIST(N):
-    return load_and_store_data_file(N, 'mnist_784')
+def load_MNIST(N, datasetPath='../Dataset_files/'):
+    return load_and_store_data_file(N, 'mnist_784', datasetPath=datasetPath)
 
-def load_FashionMNIST(N):
-    return load_and_store_data_file(N, 'fashion-mnist')
+def load_FashionMNIST(N, datasetPath='../Dataset_files/'):
+    return load_and_store_data_file(N, 'fashion-mnist', datasetPath=datasetPath)
 
-def load_CIFAR_10(N):
-    return load_and_store_data_file(N, 'cifar10', torch_dataset=True)
+def load_CIFAR_10(N, datasetPath='../Dataset_files/'):
+    return load_and_store_data_file(N, 'cifar10', torch_dataset=True, datasetPath=datasetPath)
 
 def load_heart_disease_dataset():
     heart_disease_data = pd.read_csv('./../Dataset_files/heart.csv')

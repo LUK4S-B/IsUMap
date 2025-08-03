@@ -19,7 +19,7 @@ class ClusterSeparationOptimizer(nn.Module):
     Optimized vectorized version with improved point-in-hull checking.
     """
     
-    def __init__(self, clusters: List[np.ndarray], medoids: List[np.ndarray], medoid_distances: np.ndarray, intercluster_distance_factor = 0.0, rotation_flag: bool = False, separation_weight: float = 1.0, drift_weight: float = 1.0, translation_penalty_factor: float = 0.0, rotation_penalty_factor: float = 1.0):
+    def __init__(self, clusters: List[np.ndarray], medoids: List[np.ndarray], medoid_distances: np.ndarray, intercluster_distance_factor = 0.3, rotation_flag: bool = False, separation_weight: float = 1.0, drift_weight: float = 1.0, translation_penalty_factor: float = 0.0, rotation_penalty_factor: float = 1.0):
         """
         Initialize the optimizer with clusters and their medoids.
         
@@ -344,7 +344,7 @@ class ClusterSeparationOptimizer(nn.Module):
         
         return violations
     
-    def _visualize_distance_lines(self, points: torch.Tensor, valid_hull: torch.Tensor, min_distances: torch.Tensor, is_inside: torch.Tensor, ax, projected_points: torch.Tensor | None = None) -> None:
+    def _visualize_distance_lines(self, points: torch.Tensor, valid_hull: torch.Tensor, min_distances: torch.Tensor, is_inside: torch.Tensor, ax, projected_points: torch.Tensor | None = None, enable_grid: bool = True) -> None:
         """
         Visualize the minimum distance lines from points to the convex hull.
         
@@ -435,7 +435,8 @@ class ClusterSeparationOptimizer(nn.Module):
                           fontsize=8, color='red')
         
         ax.set_aspect('equal')
-        ax.grid(True, alpha=0.3)
+        if enable_grid:
+            ax.grid(True, alpha=0.3)
         ax.legend()
         ax.set_title('Distance Visualization (Red lines show min distances to hull)')
     
@@ -735,7 +736,7 @@ def optimize_cluster_separation(clusters: List[np.ndarray],
 def create_optimization_frame(optimizer_model: ClusterSeparationOptimizer, 
                             iteration: int, loss: float,
                             title: str = "Cluster Separation Optimization", 
-                            point = None, p12 = None, medoid_paths = None) -> Image.Image:
+                            point = None, p12 = None, medoid_paths = None, enable_grid = True) -> Image.Image:
     """
     Create a single frame for the optimization movie.
     
@@ -779,7 +780,7 @@ def create_optimization_frame(optimizer_model: ClusterSeparationOptimizer,
                 pass
     
     ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(enable_grid, alpha=0.3)
     ax1.set_aspect('equal')
     
     # Plot current clusters
@@ -833,7 +834,7 @@ def create_optimization_frame(optimizer_model: ClusterSeparationOptimizer,
         ax2.scatter(p20[0], p20[1], s=50, c="red")
     
     ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    ax2.grid(enable_grid, alpha=0.3)
     ax2.set_aspect('equal')
     
     plt.suptitle(f"{title} - Iteration {iteration}")
@@ -903,7 +904,7 @@ def create_optimization_movie(optimizer_model: ClusterSeparationOptimizer,
 
 
 def visualize_optimization(optimizer_model: ClusterSeparationOptimizer,
-                          title: str = "Cluster Separation Optimization", point = None, p12 = None, make_summary = True, medoid_paths = None):
+                          title: str = "Cluster Separation Optimization", point = None, p12 = None, medoid_paths = None, save_path = None, display = True, enable_grid = True):
     """
     Visualize the original and optimized cluster positions.
     """
@@ -935,7 +936,10 @@ def visualize_optimization(optimizer_model: ClusterSeparationOptimizer,
                 pass
     
     ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    if enable_grid:
+        ax1.grid(True, alpha=0.3)
+    else:
+        ax1.grid(False)
     ax1.set_aspect('equal')
     
     # Plot optimized clusters
@@ -986,16 +990,25 @@ def visualize_optimization(optimizer_model: ClusterSeparationOptimizer,
         ax2.scatter(p20[0], p20[1], s=50, c="red")
     
     # ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    if enable_grid:
+        ax2.grid(True, alpha=0.3)
+    else:
+        ax2.grid(False)
     ax2.set_aspect('equal')
     
     plt.suptitle(title)
     plt.tight_layout()
     
-    plt.show()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    else:
+        if display:
+            plt.show()
+        else:
+            plt.close()
 
 def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimizer,
-                          title: str = "Cluster Separation Optimization", point = None, p12 = None, make_summary = True, medoid_paths = None, labels = None):
+                          title: str = "Cluster Separation Optimization", point = None, p12 = None, make_summary = True, medoid_paths = None, labels = None, save_path = None, display = True, enable_grid = True):
     """
     Visualize the original and optimized cluster positions.
     """
@@ -1058,26 +1071,45 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
         if labels is not None:
             cluster_labels = labels[i]
             
+            # Convert pandas Series to numpy array to avoid indexing issues
+            if hasattr(cluster_labels, 'values'):
+                cluster_labels = cluster_labels.values
+            cluster_labels = np.array(cluster_labels)
+            
             # Use KDE to find the mode of the cluster labels
             from scipy.stats import gaussian_kde
             from scipy.signal import find_peaks
             
-            # Create KDE with Silverman's rule
-            kde = gaussian_kde(cluster_labels, bw_method='silverman')
-            
-            # Create range for evaluation
-            x_range = np.linspace(cluster_labels.min(), cluster_labels.max(), 1000)
-            density = kde(x_range)
-            
-            # Find the peak (mode) of the density
-            peaks, _ = find_peaks(density, height=np.max(density) * 0.1, distance=50)
-            
-            if len(peaks) > 0:
-                # Use the highest peak as the mode
-                mode_position = x_range[peaks[np.argmax(density[peaks])]]
-            else:
-                # Fallback to mean if no peaks found
-                mode_position = np.mean(cluster_labels)
+            try:
+                # Check if cluster_labels is empty or has no variance
+                if len(cluster_labels) == 0:
+                    # Empty cluster, use a default value
+                    mode_position = 0
+                elif len(np.unique(cluster_labels)) < 2:
+                    # All labels are the same, use the unique label
+                    mode_position = cluster_labels[0]
+                else:
+                    # Create KDE with Silverman's rule
+                    kde = gaussian_kde(cluster_labels, bw_method='silverman')
+                    
+                    # Create range for evaluation
+                    x_range = np.linspace(cluster_labels.min(), cluster_labels.max(), 1000)
+                    density = kde(x_range)
+                    
+                    # Find the peak (mode) of the density
+                    peaks, _ = find_peaks(density, height=np.max(density) * 0.1, distance=50)
+                    
+                    if len(peaks) > 0:
+                        # Use the highest peak as the mode
+                        mode_position = x_range[peaks[np.argmax(density[peaks])]]
+                    else:
+                        # Fallback to mean if no peaks found
+                        mode_position = np.mean(cluster_labels)
+            except (np.linalg.LinAlgError, ValueError) as e:
+                # Handle singular covariance matrix or other KDE errors
+                # Fallback to simple mode calculation
+                unique_labels, counts = np.unique(cluster_labels, return_counts=True)
+                mode_position = unique_labels[np.argmax(counts)]
             
             # Find the element in unique_labels that is closest to the mode
             distances_to_mode = np.abs(unique_labels - mode_position)
@@ -1112,7 +1144,10 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
         
     # ax1.legend(handles=legend_elements)
 
-    ax1.grid(True, alpha=0.3)
+    if enable_grid:
+        ax1.grid(True, alpha=0.3)
+    else:
+        ax1.grid(False)
     ax1.set_aspect('equal')
     
     # Plot optimized clusters
@@ -1160,13 +1195,22 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
         ax2.scatter(p10[0], p10[1], s=50, c="red") 
         ax2.scatter(p20[0], p20[1], s=50, c="red")
     
-    ax2.grid(True, alpha=0.3)
+    if enable_grid:
+        ax2.grid(True, alpha=0.3)
+    else:
+        ax2.grid(False)
     ax2.set_aspect('equal')
     
     plt.suptitle(title)
     plt.tight_layout()
     
-    plt.show()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    else:
+        if display:
+            plt.show()
+        else:
+            plt.close()
 
 
 # Example usage
