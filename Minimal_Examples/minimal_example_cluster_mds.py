@@ -9,7 +9,7 @@ scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 
 from isumap_cluster import isumap_cluster
-from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST
+from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST, createBreastCancerDataset, createSCurve
 
 from multiprocessing import cpu_count
 from time import time
@@ -30,18 +30,20 @@ if __name__ == '__main__':
     # data, labels = createNonUniformHemisphere(N)
     # data, labels = createSwissRole(N,hole=True,seed=0)
     # data, labels = createFourGaussians(8.2,N)
-    # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
-    data, labels = createTorus(N,seed=0)
+    # data, labels = createMoons(N,noise=0.1,seed=42)
+    # data, labels = createTorus(N,seed=0)
     # data, labels = createMammoth(N,k=30,seed=42)
-    # data, labels = load_MNIST(N)
+    data, labels = load_MNIST(N)
     # data, labels = createBreastCancerDataset()
     # data, labels = load_FashionMNIST(N)
+    # data, labels = createSCurve(N, noise=0.1, seed=42)
+    # data, labels = load_CIFAR_10(N)
 
-    plot_data(data,labels,title="Initial dataset",display=True, save=False)
+    # plot_data(data,labels,title="Initial dataset",display=True, save=False)
     
     t0=time()
     results = isumap_cluster(data, k,
-        normalize = normalize, distBeyondNN=distBeyondNN, tconorm = tconorm, distFun=distFun, epm=epm, cluster_algo = "linkage_cluster", labels = labels, orig_data = np.copy(data))
+        normalize = normalize, distBeyondNN=distBeyondNN, tconorm = tconorm, distFun=distFun, epm=epm, cluster_algo = "linkage_cluster", labels = labels, preprocess_with_pca = False, pca_components = 40, plot_original_data = False)
     t1 = time()
     
     # plot_data(finalInitEmbedding,labels,title=title+" init",display=True, save=True)
