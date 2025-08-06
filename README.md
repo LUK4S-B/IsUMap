@@ -4,7 +4,7 @@ IsUMap is a dimension reduction and data visualization tool, that can be viewed 
 
 The theoretical basis of IsUMap is explained in the following publications:
   - [Fuzzy simplicial sets and their application to geometric data analysis](https://arxiv.org/abs/2406.11154)
-  - [IsUMap: Manifold Learning and Data Visualization leveraging Vietoris-Rips filtrations](https://arxiv.org/abs/2407.17835)
+  - [IsUMap: Manifold Learning and Data Visualization Leveraging Vietoris-Rips Filtrations](https://ojs.aaai.org/index.php/AAAI/article/view/33946)
 
 Please cite them when using IsUMap.
 
@@ -35,19 +35,23 @@ data, labels = createNonUniformHemisphere(N)
 # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
 # data, labels = createTorus(N,seed=0)
 # data, labels = createMammoth(N,k=30,seed=42)
-
-# data, labels = load_MNIST(N)
-# data, labels = createBreastCancerDataset()
-# data, labels = load_FashionMNIST(N)
 ```
 
 The default example is the non-uniform hemisphere, that is supposed to show that IsUMap can successfully uniformize the data distribution. 
 
-Below we provide a figure that compares some results.
+Below we provide a figure that compares some results for low-dimensional manifolds.
 
 ![Comparison of 3 manifold learning methods](./Results/IsUMap_comparison.png)
 
-One can see that IsUMap excels for manifolds with lower dimension because it distorts distances less than UMAP, while being able to uniformize the data distribution better than Isomap. However, the decreased amount of distortion also results in lower clustering capability for high-dimensional datasets.
+One can see that IsUMap excels for manifolds with lower dimension because it distorts distances less than UMAP, while being able to uniformize the data distribution better than Isomap. 
+
+For high-dimensional datasets, we implemented a cluster separation algorithm that uses information of a clustering algorithm to pull the convex hulls of the clusters in the embedding apart via stochastic gradient descent (SGD). Here is an example for the 20-newsgroups document embedding dataset:
+
+![IsUMap cluster separation embedding algorithm applied to 20-newsgroups document dataset](./Results/IsUMap_cluster_20-newsgroups.png)
+
+We can see on the left side that our algorithm is capable of separating the newsgroups quite well into distinct clusters. On the right side of the figure, the colored dots in the center mark the medoids of the clusters and their distances (computed in the original metric space and then embedded via metric multidimensional scaling). The cluster separation optimization procedures then pulls the clusters apart via SGD, while making sure that the intercluster distances are monotonic functions of the distances in the original space. The colored stars mark the final positions of the medoids and one can see the paths they took during the cluster separation procedure on the right side of the figure. In this way, the user can obtain information about the clusters and about the distortion that the visualization of these clusters required in comparison to a local optimum of a metric embedding.
+
+See `Simulations/Simulations for article - Fuzzy simplicial sets and their application to geometric data analysis/` for further examples.
 
 # Arguments and parameters
 
