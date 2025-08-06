@@ -603,7 +603,8 @@ def optimize_cluster_separation(clusters: List[np.ndarray],
                               labels = None,
                               lr_start: float = 0.1,
                               lr_end: float = 1.0,
-                              lr_warmup_epochs: int = 20) -> dict:
+                              lr_warmup_epochs: int = 20, 
+                              custom_color_map = 'jet') -> dict:
     """
     Optimize cluster positions to achieve separation.
     Args:
@@ -721,7 +722,7 @@ def optimize_cluster_separation(clusters: List[np.ndarray],
     if visualize:
         visualize_optimization(optimizer_model, medoid_paths=np.array(medoid_paths))
 
-        visualize_optimization_with_labels(optimizer_model, medoid_paths=np.array(medoid_paths), labels=labels)
+        visualize_optimization_with_labels(optimizer_model, medoid_paths=np.array(medoid_paths), labels=labels, custom_color_map=custom_color_map)
 
     # Create a results dictionary to store all the data
     results = {
@@ -736,7 +737,7 @@ def optimize_cluster_separation(clusters: List[np.ndarray],
 def create_optimization_frame(optimizer_model: ClusterSeparationOptimizer, 
                             iteration: int, loss: float,
                             title: str = "Cluster Separation Optimization", 
-                            point = None, p12 = None, medoid_paths = None, enable_grid = True) -> Image.Image:
+                            point = None, p12 = None, medoid_paths = None, enable_grid = True, custom_color_map='jet') -> Image.Image:
     """
     Create a single frame for the optimization movie.
     
@@ -754,7 +755,7 @@ def create_optimization_frame(optimizer_model: ClusterSeparationOptimizer,
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
-    colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, optimizer_model.n_clusters))
+    colors = plt.cm.get_cmap(custom_color_map)(np.linspace(0, 1, optimizer_model.n_clusters))
     
     # Plot original clusters
     ax1.set_title("Original Clusters")
@@ -1008,7 +1009,7 @@ def visualize_optimization(optimizer_model: ClusterSeparationOptimizer,
             plt.close()
 
 def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimizer,
-                          title: str = "Cluster Separation Optimization", point = None, p12 = None, make_summary = True, medoid_paths = None, labels = None, save_path = None, display = True, enable_grid = True):
+                          title: str = "Cluster Separation Optimization", point = None, p12 = None, make_summary = True, medoid_paths = None, labels = None, save_path = None, display = True, enable_grid = True, custom_color_map='viridis'):
     """
     Visualize the original and optimized cluster positions.
     """
@@ -1021,35 +1022,45 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
     
     # Plot cluster points
     ax1.set_title("Cluster points")
-    # colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, optimizer_model.n_clusters))
+    # colors = plt.cm.get_cmap(custom_color_map)(np.linspace(0, 1, optimizer_model.n_clusters))
 
     if labels is not None:
         unique_labels = np.unique(np.concatenate(labels))
-        colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, unique_labels.shape[0]))
+        colors = plt.cm.get_cmap(custom_color_map)(np.linspace(0, 1, unique_labels.shape[0]))
     else:
-        colors = plt.cm.get_cmap('jet')(np.linspace(0, 1, optimizer_model.n_clusters))
+        colors = plt.cm.get_cmap(custom_color_map)(np.linspace(0, 1, optimizer_model.n_clusters))
 
     # if labels is not None:
-    #     # Convert labels (integers) to colors using jet colormap
+    #     # Convert labels (integers) to colors using custom_color_map colormap
     #     label_colors = []
     #     for label_array in labels:
-    #         # Convert each integer label to its corresponding color from jet colormap
+    #         # Convert each integer label to its corresponding color from custom_color_map colormap
     #         color_array = [colors[label % len(colors)] for label in label_array]
     #         label_colors.append(color_array)
     # else:
     #     label_colors = colors
     
+
+
+
     for i, (cluster, medoid) in enumerate(zip(transformed_clusters, current_medoids)):
         cluster_np = cluster.detach().numpy()
         medoid_np = medoid.detach().numpy()
         
         if labels is not None:
-            # Convert labels to color indices efficiently
-            label_indices = np.searchsorted(unique_labels, labels[i])
-            label_colors = colors[label_indices]
-            
-            ax1.scatter(cluster_np[:, 0], cluster_np[:, 1], 
-                   c=label_colors, alpha=0.6, s=5, edgecolors='none')
+            current_labels = labels[i]
+
+            # Check if labels are continuous or discrete
+            if np.any(unique_labels != unique_labels.astype(int)):
+                # Continuous case: normalize and map directly to colormap
+                norm = plt.Normalize(vmin=current_labels.min(), vmax=current_labels.max())
+                label_colors = plt.cm.get_cmap(custom_color_map)(norm(current_labels))
+            else:
+                # Convert labels to color indices efficiently
+                label_indices = np.searchsorted(unique_labels, current_labels)
+                label_colors = colors[label_indices]
+                
+            ax1.scatter(cluster_np[:, 0], cluster_np[:, 1], c=label_colors, alpha=0.6, s=5, edgecolors='none')
         else:
             ax1.scatter(cluster_np[:, 0], cluster_np[:, 1], 
                    c=[colors[i]], alpha=0.6, s=5, edgecolors='none')
@@ -1115,7 +1126,7 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
             distances_to_mode = np.abs(unique_labels - mode_position)
             closest_label_idx = np.argmin(distances_to_mode)
             
-            # Map the closest label to jet colormap
+            # Map the closest label to custom_color_map colormap
             cluster_majority_colors.append(colors[closest_label_idx])
         else:
             cluster_majority_colors.append(colors[i])
@@ -1125,7 +1136,7 @@ def visualize_optimization_with_labels(optimizer_model: ClusterSeparationOptimiz
     # legend_elements = []
     
     # if labels is not None:
-    #     # Create legend for unique labels using the jet colormap
+    #     # Create legend for unique labels using the custom_color_map colormap
     #     all_labels = []
     #     for label_array in labels:
     #         all_labels.extend(label_array)

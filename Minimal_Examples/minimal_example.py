@@ -7,7 +7,7 @@ sys.path.append(scriptPath)
 
 from time import time
 from isumap import isumap
-from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST
+from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRoll, createFourGaussians, createMoons, createTorus, load_FashionMNIST
 from multiprocessing import cpu_count
 
 k = 20
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     title = "MNIST 4 N_" + str(N) + " k_" + str(k) + " beyondNN_" + str(distBeyondNN) + " normalize_" + str(normalize) + " metricMDS_" + str(metricMDS) + " tconorm_" + tconorm + " distFun_" + distFun + " phi_" + phi + " epm_" + str(epm) + " mdsLoss_" + mds_loss_fun + " apply_Dijkstra_" + str(apply_Dijkstra) + " extractSubgraphs_" + str(extractSubgraphs) + " max_param_" + str(max_param)
 
     # data, labels = createNonUniformHemisphere(N)
-    # data, labels = createSwissRole(N,hole=True,seed=0)
+    # data, labels = createSwissRoll(N,hole=True,seed=0)
     # data, labels = createFourGaussians(8.2,N)
     # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
     # data, labels = createTorus(N,seed=0)

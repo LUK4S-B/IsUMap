@@ -9,7 +9,7 @@ sys.path.append(scriptPath)
 
 from time import time
 from isumap import isumap
-from data_and_plots import plot_data, printtime, createNonUniformHemisphere, createMammoth, load_MNIST, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST, make_s_curve_with_hole, create_nonuniform_Mobius, createBreastCancerDataset
+from data_and_plots import plot_data, printtime, createNonUniformHemisphere, createMammoth, load_MNIST, createSwissRoll, createFourGaussians, createMoons, createTorus, load_FashionMNIST, make_s_curve_with_hole, create_nonuniform_Mobius, createBreastCancerDataset
 from multiprocessing import cpu_count
 import numpy as np
 
@@ -27,7 +27,7 @@ distFun = "canonical"
 tconorms = ["m_scheme", "m_scheme_Wiener_Shannon", "m_scheme_Composition", "m_scheme_Hyperbolic"]
 def create_data(i):
     if i==0:
-        return ("swissRole", createSwissRole(N))
+        return ("SwissRoll", createSwissRoll(N))
         # return ("s-shape", make_s_curve_with_hole(N))
     elif i==1:
         return ("breastCancerData", createBreastCancerDataset(path="../../Dataset_files/BreastCancerDataset.csv"))

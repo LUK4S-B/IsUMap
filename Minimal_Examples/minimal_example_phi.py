@@ -6,7 +6,7 @@ scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 from time import time
 from isumap import isumap
-from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST
+from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRoll, createFourGaussians, createMoons, createTorus, load_FashionMNIST
 from multiprocessing import cpu_count
 
 k = 15

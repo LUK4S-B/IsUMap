@@ -315,6 +315,13 @@ def generate_phi_functions(phi, phi_inv, tconorm, m_scheme_value, normalize, dat
 
     return phi, phi_inv
 
+import os
+def get_data_path(name):
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PATH_DATA = os.path.join(SCRIPT_DIR, "../Dataset_files/" + name + ".pkl")
+    scriptPath = os.path.abspath(PATH_DATA)
+    return scriptPath
+
 def distance_graph_generation(data,
            k: int,
            normalize:bool = True,
@@ -324,6 +331,7 @@ def distance_graph_generation(data,
            directedDistances: bool = False,
            dataIsGeodesicDistMatrix: bool = False,
            saveDistMatrix: bool = False,
+           saveDistMatrixPath = None,
            tconorm = "canonical",
            distFun = "canonical",
            phi = None,
@@ -462,9 +470,11 @@ def distance_graph_generation(data,
             np.fill_diagonal(D, 0)
         
         if saveDistMatrix == True:
+            if saveDistMatrixPath is None:
+                saveDistMatrixPath = get_data_path("D")
             if verbose:
-                print("Storing geodesic distance matrix")
-            with open('./Dataset_files/D.pkl', 'wb') as f:
+                print("Storing geodesic distance matrix at " + saveDistMatrixPath)
+            with open(saveDistMatrixPath, 'wb') as f:
                 pickle.dump(D, f)
     else:
         if verbose:

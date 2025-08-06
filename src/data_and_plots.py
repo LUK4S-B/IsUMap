@@ -88,7 +88,7 @@ def createTorus(N,seed=0):
             np.sin(theta)]).T
     return dataset,colors
 
-def createSwissRole(N,hole=True,seed=0):
+def createSwissRoll(N,hole=True,seed=0):
     return datasets.make_swiss_roll(n_samples=N, hole = hole, noise=0.0 , random_state=seed)
 
 
@@ -277,16 +277,18 @@ def plot_MNIST_samples(images, labels, num_samples=10):
     plt.tight_layout()  # Adjust the padding between and around the subplots
     plt.show()
 
-def plot_data(data,labels,title='Data',save=True,display=False,axis=False, colorbar=False, plot_sphere=False, path=None, size=3):
+def plot_data(data,labels,title='Data',save=True,display=False,axis=False, colorbar=False, plot_sphere=False, path=None, size=3, grid=False, custom_color_map="jet"):
     if data.shape[0]==labels.shape[0]:
         fig = plt.figure(figsize=(12, 12))
         plt.title(title)
         dim = data.shape[1]
         if dim==2:
-            plt.scatter(data[:,0], data[:,1], s=size, c=labels, cmap="jet")
+            plt.scatter(data[:,0], data[:,1], s=size, c=labels, cmap=custom_color_map)
             if colorbar:
                 plt.colorbar()
             plt.gca().set_aspect('equal', adjustable='datalim')
+            if grid:
+                plt.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
             if not axis:
                 plt.axis('off')
         elif dim==3:
@@ -299,7 +301,11 @@ def plot_data(data,labels,title='Data',save=True,display=False,axis=False, color
                 y = radius * np.outer(np.sin(u), np.sin(v))
                 z = radius * np.outer(np.ones(np.size(u)), np.cos(v))
                 ax.plot_surface(x, y, z, color='white', alpha=1.0, shade=False) # white sphere
-            ax.scatter(data[:,0],data[:,1],data[:,2],s=3,c=labels, cmap="jet")
+            ax.scatter(data[:,0],data[:,1],data[:,2],s=3,c=labels, cmap=custom_color_map)
+            if grid:
+                ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+            if not axis:
+                plt.axis('off')
             ax.view_init(20, -20)
         else:
             print("Invalid dimension for plot")

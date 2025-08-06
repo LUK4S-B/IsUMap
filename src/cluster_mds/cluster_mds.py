@@ -59,7 +59,7 @@ def special_plot(data_array,special_points,colors,special_point_colors):
     plt.tight_layout()
     plt.show()
 
-def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv = identity, true_labels = None, global_embedding = True, directedDistances = False, store_results = False, display_results = False, save_display_results = True, plot_title = "title", also_return_optimizer_model = False, also_return_medoid_paths = False, orig_data = None, plot_original_data = False, visualize_results = False, **cluster_algo_kwargs):
+def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv = identity, true_labels = None, global_embedding = True, directedDistances = False, store_results = False, display_results = False, save_display_results = True, plot_title = "title", also_return_optimizer_model = False, also_return_medoid_paths = False, orig_data = None, plot_original_data = False, visualize_results = False, custom_color_map='jet', **cluster_algo_kwargs):
 
     cluster_labels = cluster_algo(g, **cluster_algo_kwargs)
 
@@ -70,6 +70,8 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
             plot_data(orig_data, cluster_labels, title="Initial dataset with cluster labels",  display=True, save=False)
 
     unique_cluster_labels = np.unique(cluster_labels)
+    if verbose:
+        print("Number of clusters: ", str(len(unique_cluster_labels)))
     cluster_embeddings = []
     cluster_indices = []
     cluster_medoid_indices = []
@@ -162,7 +164,7 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
 
     # --------------- CLUSTER SEPARATION OPTIMIZATION ---------------
     print("\nStarting cluster separation optimization...")
-    results = optimize_cluster_separation(complete_embeddings, medoid_list, medoid_distances, labels=true_labels_reordered, visualize=visualize_results)
+    results = optimize_cluster_separation(complete_embeddings, medoid_list, medoid_distances, labels=true_labels_reordered, visualize=visualize_results, custom_color_map=custom_color_map)
 
     # Organize data
     sgd_optimized_model = results['optimizer_model']
@@ -176,6 +178,7 @@ def cluster_mds(g, cluster_algo, geodesic = True, d = 2, verbose = True, phi_inv
 
     return_data = {
         'transformed_clusters': transformed_clusters,
+        'cluster_indices': cluster_indices,
         'current_medoids': current_medoids,
         'cluster_labels': np.sort(cluster_labels),
         'true_labels': true_labels_reordered_array,
