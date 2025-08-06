@@ -249,3 +249,31 @@ def isumap(data,
     
     return  finalInitEmbedding, finalEmbedding, clusterLabels
 
+def efficient_isomap(data,
+           k: int = 15,
+           d: int = 2,
+           verbose: bool = True,
+           dataIsDistMatrix: bool = False,
+           dataIsGeodesicDistMatrix: bool = False,
+           saveDistMatrix: bool = False,
+           preprocess_with_pca = False,
+           pca_components = 40):
+    
+    _, finalEmbedding, _ = isumap(data, k, d,
+           normalize = False,
+           distBeyondNN = False,
+           verbose = verbose,
+           dataIsDistMatrix = dataIsDistMatrix,
+           dataIsGeodesicDistMatrix = dataIsGeodesicDistMatrix,
+           saveDistMatrix = saveDistMatrix,
+           initialization = "cMDS",
+           metricMDS = False,
+           tconorm = "canonical",
+           distFun = "canonical",
+           epm = True,
+           apply_Dijkstra = True,
+           extractSubgraphs = False,
+           preprocess_with_pca = preprocess_with_pca,
+           pca_components = pca_components)
+    
+    return finalEmbedding

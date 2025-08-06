@@ -9,7 +9,7 @@ scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 
 from isumap_cluster import isumap_cluster
-from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST, createBreastCancerDataset, createSCurve
+from data_and_plots import plot_data, createMammoth, load_MNIST, printtime, createNonUniformHemisphere, createSwissRoll, createFourGaussians, createMoons, createTorus, load_FashionMNIST, createBreastCancerDataset, createSCurve
 
 from multiprocessing import cpu_count
 from time import time
@@ -23,12 +23,14 @@ distBeyondNN = False
 tconorm = "canonical"
 distFun = "canonical"
 
+kwargs = {'cluster_algo_kwargs': {'clusternumber' : 10}}
+
 
 if __name__ == '__main__':
     title = "MNIST 3D N_" + str(N) + " k_" + str(k) + " beyondNN_" + str(distBeyondNN) + " normalize_" + str(normalize) + " tconorm_" + tconorm + " distFun_" + distFun + " phi_exp" + " epm_" + str(epm)
 
     # data, labels = createNonUniformHemisphere(N)
-    # data, labels = createSwissRole(N,hole=True,seed=0)
+    # data, labels = createSwissRoll(N,hole=True,seed=0)
     # data, labels = createFourGaussians(8.2,N)
     # data, labels = createMoons(N,noise=0.1,seed=42)
     # data, labels = createTorus(N,seed=0)
@@ -43,7 +45,7 @@ if __name__ == '__main__':
     
     t0=time()
     results = isumap_cluster(data, k,
-        normalize = normalize, distBeyondNN=distBeyondNN, tconorm = tconorm, distFun=distFun, epm=epm, cluster_algo = "linkage_cluster", labels = labels, preprocess_with_pca = False, pca_components = 40, plot_original_data = False)
+        normalize = normalize, distBeyondNN=distBeyondNN, tconorm = tconorm, distFun=distFun, epm=epm, cluster_algo = "linkage_cluster", labels = labels, preprocess_with_pca = False, pca_components = 40, plot_original_data = False,**kwargs)
     t1 = time()
     
     # plot_data(finalInitEmbedding,labels,title=title+" init",display=True, save=True)

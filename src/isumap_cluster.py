@@ -14,7 +14,7 @@ PATH_CURRENT = os.path.join(SCRIPT_DIR, "./cluster_mds/")
 scriptPath = os.path.abspath(PATH_CURRENT)
 sys.path.append(scriptPath)
 from cluster_mds import cluster_mds
-from cluster_algos import linkage_cluster, leiden_cluster, linkage_clustering, leiden_clustering
+from cluster_algos import linkage_cluster, linkage_clustering #, leiden_cluster, leiden_clustering
 
 @njit
 def extractSubmatrices(D):
@@ -53,6 +53,7 @@ def isumap_cluster(data,
            dataIsDistMatrix: bool = False,
            dataIsGeodesicDistMatrix: bool = False,
            saveDistMatrix: bool = False,
+           saveDistMatrixPath = None,
            tconorm = "canonical",
            distFun = "canonical",
            phi = None,
@@ -78,6 +79,7 @@ def isumap_cluster(data,
            pca_components = 40,
            plot_original_data = False,
            visualize_results = False,
+           custom_color_map = 'jet',
            **kwargs):
 
     '''
@@ -137,10 +139,10 @@ def isumap_cluster(data,
 
     if cluster_algo == "linkage_cluster":
         cluster_algo = linkage_cluster
-    elif cluster_algo == "leiden_cluster":
-        cluster_algo = leiden_cluster
-        return_fuzzy_graph = True # Leiden clustering must be appplied to a fuzzy graph
-        global_embedding = False
+    # elif cluster_algo == "leiden_cluster":
+    #     cluster_algo = leiden_cluster
+    #     return_fuzzy_graph = True # Leiden clustering must be appplied to a fuzzy graph
+    #     global_embedding = False
 
     N = data.shape[0]
     D, phi_inv, data = distance_graph_generation(data,
@@ -151,6 +153,7 @@ def isumap_cluster(data,
                                     dataIsDistMatrix = dataIsDistMatrix,
                                     dataIsGeodesicDistMatrix = dataIsGeodesicDistMatrix,
                                     saveDistMatrix = saveDistMatrix,
+                                    saveDistMatrixPath = saveDistMatrixPath,
                                     tconorm = tconorm,
                                     distFun = distFun,
                                     phi = phi,
@@ -185,7 +188,7 @@ def isumap_cluster(data,
     
     geodesic = not return_fuzzy_graph and apply_Dijkstra
 
-    results = cluster_mds(D, cluster_algo, geodesic = geodesic, verbose = verbose, phi_inv = phi_inv, true_labels = labels, global_embedding = global_embedding, directedDistances = directedDistances, store_results = store_results, display_results = display_results, save_display_results = save_display_results, plot_title = plot_title, also_return_optimizer_model = also_return_optimizer_model, also_return_medoid_paths = also_return_medoid_paths, orig_data = data, plot_original_data = plot_original_data, visualize_results = visualize_results, **cluster_algo_kwargs)
+    results = cluster_mds(D, cluster_algo, geodesic = geodesic, verbose = verbose, phi_inv = phi_inv, true_labels = labels, global_embedding = global_embedding, directedDistances = directedDistances, store_results = store_results, display_results = display_results, save_display_results = save_display_results, plot_title = plot_title, also_return_optimizer_model = also_return_optimizer_model, also_return_medoid_paths = also_return_medoid_paths, orig_data = data, plot_original_data = plot_original_data, visualize_results = visualize_results, custom_color_map=custom_color_map, **cluster_algo_kwargs)
 
 
     return results

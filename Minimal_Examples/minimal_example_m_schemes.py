@@ -9,7 +9,7 @@ sys.path.append(scriptPath)
 
 from time import time
 from isumap import isumap
-from data_and_plots import plot_data, printtime, createNonUniformHemisphere, createMammoth, load_MNIST, createSwissRole, createFourGaussians, createMoons, createTorus, load_FashionMNIST
+from data_and_plots import plot_data, printtime, createNonUniformHemisphere, createMammoth, load_MNIST, createSwissRoll, createFourGaussians, createMoons, createTorus, load_FashionMNIST
 from multiprocessing import cpu_count
 import numpy as np
 
@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     data, labels = datasets.make_s_curve(N, random_state=0)
     # data, labels = createNonUniformHemisphere(N)
-    # data, labels = createSwissRole(N,hole=True,seed=0)
+    # data, labels = createSwissRoll(N,hole=True,seed=0)
     # data, labels = createFourGaussians(8.2,N)
     # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
     # data, labels = createTorus(N,seed=0)

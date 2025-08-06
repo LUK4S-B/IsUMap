@@ -30,7 +30,7 @@ In `minimal_example.py`, one can choose one of a series of example datasets, sim
 
 ```python
 data, labels = createNonUniformHemisphere(N)
-# data, labels = createSwissRole(N,hole=True,seed=0)
+# data, labels = createSwissRoll(N,hole=True,seed=0)
 # data, labels = createFourGaussians(8.2,N)
 # data, labels = createMoons(numberOfPoints,noise=0.1,seed=42)
 # data, labels = createTorus(N,seed=0)
