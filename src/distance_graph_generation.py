@@ -482,6 +482,7 @@ def distance_graph_generation(data,
         D = data
 
     # make sure D is completely symmetric
-    D = (D+D.T)/2
+    if not directedDistances:
+        D = (D+D.T)/2
 
     return D, phi_inv, data
